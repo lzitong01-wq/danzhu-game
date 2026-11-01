@@ -3,6 +3,7 @@
 [![Godot](https://img.shields.io/badge/Godot-4.6.3-478cbf?logo=godot-engine&logoColor=white)](https://godotengine.org/)
 [![Platform](https://img.shields.io/badge/platform-Android-3ddc84?logo=android&logoColor=white)](#)
 [![Version](https://img.shields.io/badge/version-1.3.0-orange)](CHANGELOG.md)
+[![Download](https://img.shields.io/badge/download-APK%2045.8MB-2ea44f?logo=android&logoColor=white)](https://github.com/lzitong01-wq/danzhu-game/releases/latest)
 
 > 手机端 **横屏像素风** 弹珠肉鸽（Pachinko × Roguelike）游戏。
 > 把命运琉璃珠射进弹珠台，看它撞在哪里、落进哪个洞——那就是你的命。
@@ -103,7 +104,9 @@ powershell -ExecutionPolicy Bypass -File tools/build_apk.ps1
 
 ### 安装试玩
 
-**APK 在 [Releases](../../releases) 页面下载**，不在仓库内（构建产物不入库，避免仓库膨胀）。
+**[→ 下载 APK（v1.3.0，45.8 MB）](https://github.com/lzitong01-wq/danzhu-game/releases/latest)**
+
+APK 作为 Release 附件发布，不在仓库内——构建产物入库会让仓库永久膨胀，且每次重新导出都会产生新的二进制差异。
 
 装到手机 → 允许未知来源 → 安装 → 启动（自动横屏）。
 
