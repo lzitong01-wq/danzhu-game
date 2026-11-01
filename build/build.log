@@ -1,0 +1,204 @@
+﻿===== build_apk.ps1 2026-10-29T22:58:38.8445982+08:00 =====
+
+===== import =====
+Godot Engine v4.6.3.stable.official.7d41c59c4 - https://godotengine.org
+
+[   0% ] [90m[1mfirst_scan_filesystem[22m | Started 项目初始化 (5 steps)[39m[0m
+[   0% ] [90m[1mfirst_scan_filesystem[22m | 正在扫描文件结构……[39m[0m
+[  16% ] [90m[1mfirst_scan_filesystem[22m | 正在加载全局类名……[39m[0m
+[  33% ] [90m[1mfirst_scan_filesystem[22m | 正在校验 GDExtension……[39m[0m
+[  50% ] [90m[1mfirst_scan_filesystem[22m | 正在创建自动加载脚本……[39m[0m
+[  66% ] [90m[1mfirst_scan_filesystem[22m | 正在初始化插件……[39m[0m
+[  83% ] [90m[1mfirst_scan_filesystem[22m | 正在启动文件扫描……[39m[0m
+[92m[ DONE ][39m [1mfirst_scan_filesystem[22m
+[0m
+[   0% ] [90m[1m_update_scan_actions[22m | Started 正在扫描动作…… (12 steps)[39m[0m
+[   0% ] [90m[1m_update_scan_actions[22m | v13_01_pixel_main_menu.png[39m[0m
+[   7% ] [90m[1m_update_scan_actions[22m | v13_02_pixel_corridor.png[39m[0m
+[  15% ] [90m[1m_update_scan_actions[22m | v13_03_pixel_prep.png[39m[0m
+[  23% ] [90m[1m_update_scan_actions[22m | v13_04_double_dialog.png[39m[0m
+[  30% ] [90m[1m_update_scan_actions[22m | v13_05_tutorial.png[39m[0m
+[  38% ] [90m[1m_update_scan_actions[22m | v13_06_card_detail.png[39m[0m
+[  46% ] [90m[1m_update_scan_actions[22m | v13_07_charge_a.png[39m[0m
+[  53% ] [90m[1m_update_scan_actions[22m | v13_08_charge_b.png[39m[0m
+[  61% ] [90m[1m_update_scan_actions[22m | v13_09_ball_flight.png[39m[0m
+[  69% ] [90m[1m_update_scan_actions[22m | v13_10_stuck_rescue.png[39m[0m
+[  76% ] [90m[1m_update_scan_actions[22m | v13_11_pixel_result_defeat.png[39m[0m
+[  84% ] [90m[1m_update_scan_actions[22m | v13_contact_sheet.png[39m[0m
+[92m[ DONE ][39m [1m_update_scan_actions[22m
+[0m
+[   0% ] [90m[1mreimport[22m | Started 正在导入或重新导入资产 (12 steps)[39m[0m
+[   0% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[   7% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  15% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  23% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  30% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  38% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  46% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  53% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  61% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  69% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  76% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  84% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[   0% ] [90m[1mreimport[22m | 正在执行重新导入的前置操作……[39m[0m
+[   0% ] [90m[1mreimport[22m | v13_01_pixel_main_menu.png[39m[0m
+[   7% ] [90m[1mreimport[22m | v13_02_pixel_corridor.png[39m[0m
+[  15% ] [90m[1mreimport[22m | v13_03_pixel_prep.png[39m[0m
+[  23% ] [90m[1mreimport[22m | v13_04_double_dialog.png[39m[0m
+[  30% ] [90m[1mreimport[22m | v13_05_tutorial.png[39m[0m
+[  38% ] [90m[1mreimport[22m | v13_06_card_detail.png[39m[0m
+[  46% ] [90m[1mreimport[22m | v13_07_charge_a.png[39m[0m
+[  53% ] [90m[1mreimport[22m | v13_08_charge_b.png[39m[0m
+[  61% ] [90m[1mreimport[22m | v13_09_ball_flight.png[39m[0m
+[  69% ] [90m[1mreimport[22m | v13_10_stuck_rescue.png[39m[0m
+[  76% ] [90m[1mreimport[22m | v13_11_pixel_result_defeat.png[39m[0m
+[  84% ] [90m[1mreimport[22m | v13_contact_sheet.png[39m[0m
+[  92% ] [90m[1mreimport[22m | 正在结束资产导入……[39m[0m
+[92m[ DONE ][39m [1mreimport[22m
+[0m
+[   0% ] [90m[1mreimport[22m | Started 正在导入或重新导入资产 (12 steps)[39m[0m
+[   0% ] [90m[1mreimport[22m | 正在执行重新导入的后置操作……[39m[0m
+[92m[ DONE ][39m [1mreimport[22m
+[0m
+[   0% ] [90m[1mloading_editor_layout[22m | Started 正在加载编辑器 (5 steps)[39m[0m
+[   0% ] [90m[1mloading_editor_layout[22m | 正在加载编辑器布局……[39m[0m
+[  16% ] [90m[1mloading_editor_layout[22m | 正在加载停靠面板……[39m[0m
+[  33% ] [90m[1mloading_editor_layout[22m | 正在重新打开场景……[39m[0m
+[  50% ] [90m[1mloading_editor_layout[22m | 正在加载中央编辑器布局……[39m[0m
+[  66% ] [90m[1mloading_editor_layout[22m | 正在加载插件窗口布局……[39m[0m
+[  83% ] [90m[1mloading_editor_layout[22m | 编辑器布局就绪。[39m[0m
+[92m[ DONE ][39m [1mloading_editor_layout[22m
+[0m
+
+
+===== export-debug =====
+Godot Engine v4.6.3.stable.official.7d41c59c4 - https://godotengine.org
+
+[   0% ] [90m[1mfirst_scan_filesystem[22m | Started 项目初始化 (5 steps)[39m[0m
+[   0% ] [90m[1mfirst_scan_filesystem[22m | 正在扫描文件结构……[39m[0m
+[  16% ] [90m[1mfirst_scan_filesystem[22m | 正在加载全局类名……[39m[0m
+[  33% ] [90m[1mfirst_scan_filesystem[22m | 正在校验 GDExtension……[39m[0m
+[  50% ] [90m[1mfirst_scan_filesystem[22m | 正在创建自动加载脚本……[39m[0m
+[  66% ] [90m[1mfirst_scan_filesystem[22m | 正在初始化插件……[39m[0m
+[  83% ] [90m[1mfirst_scan_filesystem[22m | 正在启动文件扫描……[39m[0m
+[92m[ DONE ][39m [1mfirst_scan_filesystem[22m
+[0m
+[   0% ] [90m[1mexport[22m | Started 正在为 Android 导出 (105 steps)[39m[0m
+0 param: --xr_mode_regular
+1 param: --xr-mode
+2 param: off
+3 param: --fullscreen
+4 param: --background_color
+5 param: #000000
+[   0% ] [90m[1mexport[22m | 正在创建 APK……[39m[0m
+ADDING: classes.dex
+ADDING: classes10.dex
+ADDING: classes11.dex
+ADDING: classes12.dex
+ADDING: classes13.dex
+ADDING: classes14.dex
+ADDING: classes2.dex
+ADDING: classes3.dex
+ADDING: classes4.dex
+ADDING: classes5.dex
+ADDING: classes6.dex
+ADDING: classes7.dex
+ADDING: classes8.dex
+ADDING: classes9.dex
+ADDING: lib/arm64-v8a/libc++_shared.so
+ADDING: lib/arm64-v8a/libgodot_android.so
+Adding application metadata org.godotengine.rendering.method
+Adding application metadata org.godotengine.editor.version
+Adding feature android.hardware.vulkan.level
+Adding feature android.hardware.vulkan.version
+ADDING: AndroidManifest.xml
+ADDING: res/anim-v21/fragment_fast_out_extra_slow_in.xml
+ADDING: res/animator/fragment_close_enter.xml
+ADDING: res/animator/fragment_close_exit.xml
+ADDING: res/animator/fragment_fade_enter.xml
+ADDING: res/animator/fragment_fade_exit.xml
+ADDING: res/animator/fragment_open_enter.xml
+ADDING: res/animator/fragment_open_exit.xml
+ADDING: res/drawable-hdpi-v4/notification_bg_low_normal.9.png
+ADDING: res/drawable-hdpi-v4/notification_bg_low_pressed.9.png
+ADDING: res/drawable-hdpi-v4/notification_bg_normal.9.png
+ADDING: res/drawable-hdpi-v4/notification_bg_normal_pressed.9.png
+ADDING: res/drawable-hdpi-v4/notify_panel_notification_icon_bg.png
+ADDING: res/drawable-mdpi-v4/notification_bg_low_normal.9.png
+ADDING: res/drawable-mdpi-v4/notification_bg_low_pressed.9.png
+ADDING: res/drawable-mdpi-v4/notification_bg_normal.9.png
+ADDING: res/drawable-mdpi-v4/notification_bg_normal_pressed.9.png
+ADDING: res/drawable-mdpi-v4/notify_panel_notification_icon_bg.png
+ADDING: res/drawable-v21/notification_action_background.xml
+ADDING: res/drawable-v23/compat_splash_screen.xml
+ADDING: res/drawable-v23/compat_splash_screen_no_icon_background.xml
+ADDING: res/drawable-xhdpi-v4/notification_bg_low_normal.9.png
+ADDING: res/drawable-xhdpi-v4/notification_bg_low_pressed.9.png
+ADDING: res/drawable-xhdpi-v4/notification_bg_normal.9.png
+ADDING: res/drawable-xhdpi-v4/notification_bg_normal_pressed.9.png
+ADDING: res/drawable-xhdpi-v4/notify_panel_notification_icon_bg.png
+ADDING: res/drawable/icon_background.xml
+ADDING: res/drawable/notification_bg.xml
+ADDING: res/drawable/notification_bg_low.xml
+ADDING: res/drawable/notification_icon_background.xml
+ADDING: res/drawable/notification_tile_bg.xml
+ADDING: res/layout-v21/notification_action.xml
+ADDING: res/layout-v21/notification_action_tombstone.xml
+ADDING: res/layout-v21/notification_template_custom_big.xml
+ADDING: res/layout-v21/notification_template_icon_group.xml
+ADDING: res/layout/custom_dialog.xml
+ADDING: res/layout/downloading_expansion.xml
+ADDING: res/layout/godot_app_layout.xml
+ADDING: res/layout/notification_template_part_chronometer.xml
+ADDING: res/layout/notification_template_part_time.xml
+ADDING: res/layout/remote_godot_fragment_layout.xml
+ADDING: res/layout/snackbar.xml
+ADDING: res/layout/splash_screen_view.xml
+ADDING: res/layout/status_bar_ongoing_event_progress_bar.xml
+ADDING: res/mipmap-anydpi-v26/icon.xml
+ADDING: res/mipmap-hdpi-v4/icon.webp
+ADDING: res/mipmap-hdpi-v4/icon_background.webp
+ADDING: res/mipmap-hdpi-v4/icon_foreground.webp
+ADDING: res/mipmap-hdpi-v4/icon_monochrome.webp
+ADDING: res/mipmap-mdpi-v4/icon.webp
+ADDING: res/mipmap-mdpi-v4/icon_background.webp
+ADDING: res/mipmap-mdpi-v4/icon_foreground.webp
+ADDING: res/mipmap-mdpi-v4/icon_monochrome.webp
+ADDING: res/mipmap-xhdpi-v4/icon.webp
+ADDING: res/mipmap-xhdpi-v4/icon_background.webp
+ADDING: res/mipmap-xhdpi-v4/icon_foreground.webp
+ADDING: res/mipmap-xhdpi-v4/icon_monochrome.webp
+ADDING: res/mipmap-xxhdpi-v4/icon.webp
+ADDING: res/mipmap-xxhdpi-v4/icon_background.webp
+ADDING: res/mipmap-xxhdpi-v4/icon_foreground.webp
+ADDING: res/mipmap-xxhdpi-v4/icon_monochrome.webp
+ADDING: res/mipmap-xxxhdpi-v4/icon.webp
+ADDING: res/mipmap-xxxhdpi-v4/icon_background.webp
+ADDING: res/mipmap-xxxhdpi-v4/icon_foreground.webp
+ADDING: res/mipmap-xxxhdpi-v4/icon_monochrome.webp
+ADDING: res/mipmap/icon.webp
+ADDING: res/mipmap/icon_background.webp
+ADDING: res/mipmap/icon_foreground.webp
+ADDING: res/mipmap/icon_monochrome.webp
+ADDING: res/xml/godot_provider_paths.xml
+ADDING: resources.arsc
+ADDING: DebugProbesKt.bin
+ADDING: kotlin/annotation/annotation.kotlin_builtins
+ADDING: kotlin/collections/collections.kotlin_builtins
+ADDING: kotlin/concurrent/atomics/atomics.kotlin_builtins
+ADDING: kotlin/coroutines/coroutines.kotlin_builtins
+ADDING: kotlin/internal/internal.kotlin_builtins
+ADDING: kotlin/kotlin.kotlin_builtins
+ADDING: kotlin/ranges/ranges.kotlin_builtins
+ADDING: kotlin/reflect/reflect.kotlin_builtins
+[   0% ] [90m[1mexport[22m | 正在添加文件……[39m[0m
+[  97% ] [90m[1mexport[22m | 正在对齐 APK……[39m[0m
+[  98% ] [90m[1mexport[22m | 正在签名调试 APK……[39m[0m
+Signing binary using: 
+D:/VS/GGS/Android/android-sdk/build-tools/36.0.0/apksigner.bat sign --verbose --ks <REDACTED> --ks-pass pass:<REDACTED> --ks-key-alias <REDACTED> G:/GoDot/？！珠珠！？/build/zhuzhu-fate-debug.apk
+Signed
+
+[  99% ] [90m[1mexport[22m | 正在校验 APK……[39m[0m
+[92m[ DONE ][39m [1mexport[22m
+[0m
+
