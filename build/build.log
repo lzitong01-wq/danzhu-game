@@ -1,4 +1,4 @@
-﻿===== build_apk.ps1 2026-10-29T22:58:38.8445982+08:00 =====
+﻿===== build_apk.ps1 2026-11-07T20:31:58.7277794+08:00 =====
 
 ===== import =====
 Godot Engine v4.6.3.stable.official.7d41c59c4 - https://godotengine.org
@@ -11,54 +11,6 @@ Godot Engine v4.6.3.stable.official.7d41c59c4 - https://godotengine.org
 [  66% ] [90m[1mfirst_scan_filesystem[22m | 正在初始化插件……[39m[0m
 [  83% ] [90m[1mfirst_scan_filesystem[22m | 正在启动文件扫描……[39m[0m
 [92m[ DONE ][39m [1mfirst_scan_filesystem[22m
-[0m
-[   0% ] [90m[1m_update_scan_actions[22m | Started 正在扫描动作…… (12 steps)[39m[0m
-[   0% ] [90m[1m_update_scan_actions[22m | v13_01_pixel_main_menu.png[39m[0m
-[   7% ] [90m[1m_update_scan_actions[22m | v13_02_pixel_corridor.png[39m[0m
-[  15% ] [90m[1m_update_scan_actions[22m | v13_03_pixel_prep.png[39m[0m
-[  23% ] [90m[1m_update_scan_actions[22m | v13_04_double_dialog.png[39m[0m
-[  30% ] [90m[1m_update_scan_actions[22m | v13_05_tutorial.png[39m[0m
-[  38% ] [90m[1m_update_scan_actions[22m | v13_06_card_detail.png[39m[0m
-[  46% ] [90m[1m_update_scan_actions[22m | v13_07_charge_a.png[39m[0m
-[  53% ] [90m[1m_update_scan_actions[22m | v13_08_charge_b.png[39m[0m
-[  61% ] [90m[1m_update_scan_actions[22m | v13_09_ball_flight.png[39m[0m
-[  69% ] [90m[1m_update_scan_actions[22m | v13_10_stuck_rescue.png[39m[0m
-[  76% ] [90m[1m_update_scan_actions[22m | v13_11_pixel_result_defeat.png[39m[0m
-[  84% ] [90m[1m_update_scan_actions[22m | v13_contact_sheet.png[39m[0m
-[92m[ DONE ][39m [1m_update_scan_actions[22m
-[0m
-[   0% ] [90m[1mreimport[22m | Started 正在导入或重新导入资产 (12 steps)[39m[0m
-[   0% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
-[   7% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
-[  15% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
-[  23% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
-[  30% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
-[  38% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
-[  46% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
-[  53% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
-[  61% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
-[  69% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
-[  76% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
-[  84% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
-[   0% ] [90m[1mreimport[22m | 正在执行重新导入的前置操作……[39m[0m
-[   0% ] [90m[1mreimport[22m | v13_01_pixel_main_menu.png[39m[0m
-[   7% ] [90m[1mreimport[22m | v13_02_pixel_corridor.png[39m[0m
-[  15% ] [90m[1mreimport[22m | v13_03_pixel_prep.png[39m[0m
-[  23% ] [90m[1mreimport[22m | v13_04_double_dialog.png[39m[0m
-[  30% ] [90m[1mreimport[22m | v13_05_tutorial.png[39m[0m
-[  38% ] [90m[1mreimport[22m | v13_06_card_detail.png[39m[0m
-[  46% ] [90m[1mreimport[22m | v13_07_charge_a.png[39m[0m
-[  53% ] [90m[1mreimport[22m | v13_08_charge_b.png[39m[0m
-[  61% ] [90m[1mreimport[22m | v13_09_ball_flight.png[39m[0m
-[  69% ] [90m[1mreimport[22m | v13_10_stuck_rescue.png[39m[0m
-[  76% ] [90m[1mreimport[22m | v13_11_pixel_result_defeat.png[39m[0m
-[  84% ] [90m[1mreimport[22m | v13_contact_sheet.png[39m[0m
-[  92% ] [90m[1mreimport[22m | 正在结束资产导入……[39m[0m
-[92m[ DONE ][39m [1mreimport[22m
-[0m
-[   0% ] [90m[1mreimport[22m | Started 正在导入或重新导入资产 (12 steps)[39m[0m
-[   0% ] [90m[1mreimport[22m | 正在执行重新导入的后置操作……[39m[0m
-[92m[ DONE ][39m [1mreimport[22m
 [0m
 [   0% ] [90m[1mloading_editor_layout[22m | Started 正在加载编辑器 (5 steps)[39m[0m
 [   0% ] [90m[1mloading_editor_layout[22m | 正在加载编辑器布局……[39m[0m

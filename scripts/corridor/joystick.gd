@@ -1,6 +1,6 @@
 extends Control
-## 虚拟摇杆（P1 走廊左下，像素风）：固定圆盘 JOYSTICK_CENTER / JOYSTICK_RADIUS。
-## 触摸拖动（多点触控取第一根手指），桌面鼠标拖动同样可用；键盘移动由 corridor.gd 读取。
+## 虚拟摇杆（P1 走廊左下，触屏）：固定圆盘 JOYSTICK_CENTER / JOYSTICK_RADIUS。
+## 触摸拖动（多点触控取第一根手指），桌面鼠标拖动同样可用；移动方向由 corridor.gd 读取 `vector`。
 ## 对外只暴露 `vector`（-1..1 的二维方向）与 `active`。
 
 const PX := preload("res://scripts/gameplay/px.gd")

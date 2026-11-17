@@ -24,6 +24,7 @@ var _fate_label: Label = null
 var _error_label: Label = null
 var _library_label: Label = null
 var _merge_btn: Button = null
+var _synth_source_btn: Button = null
 var _shop_panel: Control = null
 var _shop_box: VBoxContainer = null
 var _pending_box: HBoxContainer = null
@@ -114,12 +115,19 @@ func _build_static_ui() -> void:
 	_library_label = _make_label(FateConfig.LIBRARY_AREA.position + Vector2(16, 26), Vector2(560, 40), 20, FateConfig.COLOR_TEXT)
 	_library_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_merge_btn = Button.new()
-	_merge_btn.text = "合成：3 普通 → 1 进阶"
+	_merge_btn.text = "合成命核（3普通 60%）"
 	_merge_btn.position = FateConfig.LIBRARY_AREA.position + Vector2(16, 84)
-	_merge_btn.size = Vector2(300, 52)
-	_merge_btn.add_theme_font_size_override("font_size", 18)
+	_merge_btn.size = Vector2(280, 52)
+	_merge_btn.add_theme_font_size_override("font_size", 17)
 	_merge_btn.pressed.connect(_on_merge_pressed)
 	add_child(_merge_btn)
+	_synth_source_btn = Button.new()
+	_synth_source_btn.text = "合成命源（3进阶 40%）"
+	_synth_source_btn.position = FateConfig.LIBRARY_AREA.position + Vector2(310, 84)
+	_synth_source_btn.size = Vector2(280, 52)
+	_synth_source_btn.add_theme_font_size_override("font_size", 17)
+	_synth_source_btn.pressed.connect(_on_synth_source_pressed)
+	add_child(_synth_source_btn)
 	# ⑥ ❌ 关闭道具界面
 	_close_btn = Button.new()
 	_close_btn.text = "❌"
@@ -230,16 +238,18 @@ func flash_error(text: String) -> void:
 # ---------------- 动态内容 ----------------
 
 func _update_top_labels() -> void:
-	_score_label.text = "第%d间「%s」\n目标 %d ｜ 当前 %d" % [
-		GameState.level, GameState.get_level_name(), GameState.get_target(), GameState.level_score]
-	_coin_label.text = "金币 %d\n碎片 %d ｜ 最高分 %d" % [GameState.coins, GameState.total_shards, GameState.best_score]
+	_score_label.text = "%s「%s」\n目标 %d ｜ 当前 %d" % [
+		GameState.level_display(), GameState.get_level_name(), GameState.get_target(), GameState.level_score]
+	_coin_label.text = "命核碎片 %d\n命运碎片 %d ｜ 最高分 %d" % [GameState.coins, GameState.total_shards, GameState.best_score]
 
 func _rebuild_dynamic() -> void:
 	_rebuild_lamps()
 	_rebuild_shop()
 	_rebuild_pending()
-	_library_label.text = "弹珠库：普通 %d ｜ 进阶 %d\n长按拖到弹珠灯可替换" % [GameState.library_normal, GameState.library_advanced]
-	_merge_btn.disabled = GameState.library_normal < 3
+	_library_label.text = "弹珠库：命运 %d ｜ 命核 %d ｜ 命源 %d\n长按拖到弹珠灯可替换" % [
+		GameState.library_normal, GameState.library_advanced, GameState.library_high]
+	_merge_btn.disabled = GameState.synth_used or GameState.library_normal < FateConfig.SYNTH_CORE_COST
+	_synth_source_btn.disabled = GameState.synth_used or GameState.library_advanced < FateConfig.SYNTH_SOURCE_COST
 	_update_top_labels()
 
 func _rebuild_lamps() -> void:
@@ -263,12 +273,18 @@ func _rebuild_lamps() -> void:
 		elif card != "":
 			label.text = "★"
 			label.add_theme_color_override("font_color", FateConfig.COLOR_CRIMSON)
-		elif int(slot.get("type", 0)) == 1:
-			label.text = "◆"
-			label.add_theme_color_override("font_color", FateConfig.COLOR_GOLD)
 		else:
-			label.text = "●"
-			label.add_theme_color_override("font_color", FateConfig.COLOR_GOLD)
+			match int(slot.get("type", 0)):
+				FateConfig.BALL_TYPE_SOURCE:
+					label.text = "✦"
+					label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.45))
+					label.add_theme_font_size_override("font_size", 34)
+				FateConfig.BALL_TYPE_CORE:
+					label.text = "◆"
+					label.add_theme_color_override("font_color", FateConfig.COLOR_VIOLET)
+				_:
+					label.text = "●"
+					label.add_theme_color_override("font_color", FateConfig.COLOR_GOLD)
 		_lamp_box.add_child(label)
 
 func _rebuild_shop() -> void:
@@ -357,11 +373,22 @@ func _on_pending_pressed(item_id: String) -> void:
 		refresh()
 
 func _on_merge_pressed() -> void:
-	if GameState.merge_library_balls():
+	var result := GameState.synthesize_core()
+	if bool(result.get("ok", false)):
 		Audio.play_sfx("buy")
-		refresh()
+		flash_error("合成成功：获得 1 枚命核琉璃珠")
 	else:
-		flash_error("普通弹珠不足 3 颗")
+		flash_error("合成失败：返还 3 枚命运琉璃珠")
+	refresh()
+
+func _on_synth_source_pressed() -> void:
+	var result := GameState.synthesize_source()
+	if bool(result.get("ok", false)):
+		Audio.play_sfx("buy")
+		flash_error("合成成功：获得 1 枚命源琉璃珠")
+	else:
+		flash_error("合成失败：返还 2 枚命核琉璃珠")
+	refresh()
 
 func _on_close_pressed() -> void:
 	Audio.play_sfx("click")

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""《！？珠珠？！》— 命运回廊 · 8bit / chiptune 程序化音频合成器（v1.3）
+"""《！？珠珠？！》— 命运回廊 · 8bit / chiptune 程序化音频合成器（v1.6）
 
 全部 BGM / SFX 均为芯片音乐风格：
   - 方波主音 / 琶音（占空比 12.5% / 25% / 50%）
@@ -10,8 +10,14 @@
   - 短延迟（不做长混响），整体偏单声道、干净利落
 旋律骨架仍是 D 小调五声音阶：D F G A C。
 
+v1.6：
+  - 新增 bgm_main（48s 循环，低沉/挣扎但带希望）供主菜单 / 回廊 / 关卡共用；
+    旧的 bgm_menu / battle / shop 仍可生成，但音频层已统一映射到 bgm_main。
+  - 新增 SFX：success（成功嗡）、synth_fail（合成失败咔）、door（开门 2.6s）；
+    并按策划案调整 click（130~150ms 轻击）、slot（入槽啵 150ms）、launch（嗡鸣+尾音）。
+
 循环处理：
-  - menu / battle / shop 按整小节长度合成；音符与延迟均做回绕（wrap / 循环 shift）
+  - 循环 BGM 按整小节长度合成；音符与延迟均做回绕（wrap / 循环 shift）
   - 首尾各 1.5ms 余弦渐变，消除 OGG 首尾采样跳变
   - 输出 44.1kHz 立体声 OGG Vorbis q=5（ffmpeg libvorbis，不可用则退 libsndfile / WAV）
 SFX：44.1kHz 单声道 16bit WAV，峰值 -1dBFS（peg/click 等密集音效内部压低）。
@@ -758,6 +764,132 @@ def build_defeat(seed=7505):
                             rms_lo=-18.0, rms_hi=-14.0, fade_out=1.8), dur, 72.0
 
 
+# ================================================================ BGM：主循环
+# v1.6：主菜单 / 回廊 / 关卡共用的一首 8bit BGM。
+# 「低沉、挣扎，但带希望」：A 段（0-7 小节）低音区、稀疏、心跳鼓；
+# B 段（8-15 小节）贝斯与旋律上行、和声与 16 分琶音进入，停在悬置的 A 音上，
+# 循环回 A 段形成「挣扎—抬头—继续」的情绪回落。80 BPM × 16 小节 = 48s。
+def build_main(seed=7606):
+    rng = np.random.default_rng(seed)
+    bpm = 80.0
+    beat = 60.0 / bpm       # 0.75s
+    bar = beat * 4.0        # 3.0s
+    bars = 16
+    dur = bars * bar        # 48.0s
+    mix = Mix(dur)
+
+    # 每 2 小节一个和声区：Dm / Dm / F / C  (A) —— Dm / F / C / G (B)
+    sections = [("D2", "A2"), ("D2", "A2"), ("F2", "C3"), ("C2", "G2"),
+                ("D2", "A2"), ("F2", "C3"), ("C2", "G2"), ("G2", "D3")]
+
+    for si, (root_name, fifth_name) in enumerate(sections):
+        f_root = pitch(root_name)
+        f_fifth = pitch(fifth_name)
+        hope = si >= 4  # B 段：抬升
+        for b in range(2):
+            bar_t = (si * 2 + b) * bar
+            if not hope:
+                # A 段：低沉四分音符贝斯（断奏）
+                for off, f, g in ((0.0, f_root, 1.0), (1.0, f_root, 0.7),
+                                  (2.0, f_fifth, 0.85), (3.0, f_root, 0.7)):
+                    mix.add(triangle(f, beat * 0.90, amp=1.0,
+                                     decay_tau=0.30),
+                            bar_t + off * beat, gain=0.18 * g)
+                # 心跳鼓与轻镲
+                mix.add(kick(amp=1.0, f0=120.0, f1=42.0), bar_t, gain=0.10)
+                mix.add(kick(amp=1.0, f0=100.0, f1=38.0),
+                        bar_t + beat * 2.5, gain=0.055)
+                for off in (0.5, 2.5):
+                    mix.add(hat(amp=1.0, rng=rng), bar_t + off * beat,
+                            gain=0.022, pan=0.2)
+            else:
+                # B 段：八分音符推进贝斯（上行感）
+                for off, f, g in ((0.0, f_root, 1.0), (0.5, f_root, 0.7),
+                                  (1.0, f_fifth, 0.9), (1.5, f_root, 0.7),
+                                  (2.0, f_root, 0.95), (2.5, f_fifth, 0.7),
+                                  (3.0, f_root, 0.85), (3.5, f_fifth, 0.75)):
+                    mix.add(triangle(f, beat * 0.62, amp=1.0,
+                                     decay_tau=0.16),
+                            bar_t + off * beat, gain=0.19 * g)
+                for off, g in ((0.0, 1.0), (1.5, 0.55), (2.0, 0.8)):
+                    mix.add(kick(amp=1.0, f0=145.0, f1=44.0),
+                            bar_t + off * beat, gain=0.14 * g)
+                mix.add(snare(amp=1.0, rng=rng), bar_t + beat,
+                        gain=0.075, pan=0.1)
+                mix.add(snare(amp=1.0, rng=rng), bar_t + beat * 3.0,
+                        gain=0.075, pan=-0.1)
+                for i in range(8):
+                    mix.add(hat(amp=1.0, rng=rng), bar_t + i * beat * 0.5,
+                            gain=0.035 if i % 2 == 0 else 0.022, pan=0.24)
+
+            # 和声通道
+            if not hope:
+                if b == 1:
+                    for f in (f_root * 2, f_fifth * 2):
+                        mix.add(pulse(f, beat * 0.50, duty=0.25, amp=1.0,
+                                      decay_tau=0.18),
+                                bar_t + beat * 2.0, gain=0.035, pan=-0.18)
+            else:
+                for off in (1.5, 3.5):
+                    for f in (f_root * 2, f_fifth * 2, f_root * 4):
+                        mix.add(pulse(f, beat * 0.26, duty=0.125, amp=1.0,
+                                      decay_tau=0.09),
+                                bar_t + off * beat, gain=0.040, pan=-0.18)
+
+            # 琶音：A 段稀疏微光，B 段 16 分希望琶音
+            if hope:
+                tones = [f_root * 4, f_fifth * 4, f_root * 8, f_fifth * 4]
+                for i in range(16):
+                    mix.add(pulse(tones[i % 4], beat * 0.10, duty=0.125,
+                                  amp=1.0, decay_tau=0.05),
+                            bar_t + i * beat * 0.25, gain=0.045, pan=0.26)
+            else:
+                tones = [f_root * 2, f_fifth * 2, f_root * 4, f_fifth * 2]
+                for i in range(8):
+                    mix.add(pulse(tones[i % 4], beat * 0.14, duty=0.125,
+                                  amp=1.0, decay_tau=0.07),
+                            bar_t + i * beat * 0.5, gain=0.028, pan=0.24)
+
+    # A 段旋律：低音区挣扎，第 4 小节起缓慢向上（希望的种子）
+    a_mel = [
+        (0, 0.0, 0, 4, 1.5), (0, 2.0, 1, 4, 1.5),
+        (1, 0.0, 0, 4, 2.5),
+        (2, 0.0, 1, 4, 1.0), (2, 1.5, 3, 4, 1.0), (2, 2.5, 2, 4, 1.5),
+        (3, 0.0, 2, 4, 2.0), (3, 2.5, 1, 4, 1.5),
+        (4, 0.0, 3, 4, 1.5), (4, 2.0, 4, 4, 1.5),
+        (5, 0.0, 3, 5, 2.5),
+        (6, 0.0, 4, 5, 1.0), (6, 1.5, 3, 5, 1.0), (6, 2.5, 1, 5, 1.5),
+        (7, 0.0, 2, 5, 1.5), (7, 2.0, 3, 5, 2.0),
+    ]
+    for b, off, deg, octv, ln in a_mel:
+        mix.add(pulse(penta(deg, octv), ln * beat, duty=0.25, amp=1.0,
+                      decay_tau=0.55, vib_hz=5.0, vib_cents=8.0),
+                b * bar + off * beat, gain=0.135, pan=-0.10)
+
+    # B 段旋律：上行、密一些，停在 A5 悬置音上（循环回 A 段）
+    b_mel = [
+        (8, 0.0, 0, 5, 0.5), (8, 0.5, 1, 5, 0.5), (8, 1.0, 3, 5, 0.5),
+        (8, 1.5, 2, 5, 0.5), (8, 2.0, 1, 5, 0.5), (8, 2.5, 3, 5, 1.5),
+        (9, 0.0, 4, 5, 1.0), (9, 1.0, 3, 5, 1.0), (9, 2.0, 2, 5, 1.5),
+        (10, 0.0, 1, 5, 0.5), (10, 0.5, 3, 5, 0.5), (10, 1.0, 4, 5, 1.0),
+        (10, 2.0, 0, 6, 2.0),
+        (11, 0.0, 4, 5, 1.0), (11, 1.0, 3, 5, 1.0), (11, 2.0, 2, 5, 1.0),
+        (11, 3.0, 3, 5, 1.0),
+        (12, 0.0, 0, 5, 0.5), (12, 0.5, 1, 5, 0.5), (12, 1.0, 3, 5, 1.0),
+        (12, 1.5, 4, 5, 1.0), (12, 2.5, 0, 6, 1.5),
+        (13, 0.0, 4, 5, 1.0), (13, 1.0, 3, 5, 1.5), (13, 2.5, 1, 5, 1.5),
+        (14, 0.0, 2, 5, 1.0), (14, 1.0, 3, 5, 1.0), (14, 2.0, 4, 5, 2.0),
+        (15, 0.0, 3, 5, 2.0), (15, 2.5, 2, 5, 1.5),
+    ]
+    for b, off, deg, octv, ln in b_mel:
+        mix.add(pulse(penta(deg, octv), ln * beat, duty=0.5, amp=1.0,
+                      decay_tau=0.45, vib_hz=5.5, vib_cents=10.0),
+                b * bar + off * beat, gain=0.145, pan=-0.08)
+
+    return finalize_bgm(mix.buf, delay_mix=0.16, delay_s=0.10,
+                        rms_lo=-19.0, rms_hi=-15.0), dur, bpm
+
+
 # ================================================================ SFX
 def nsamp(dur):
     return max(2, int(round(dur * SR)))
@@ -780,15 +912,26 @@ def _blip(freq, dur, duty=0.5, decay_tau=None, slide_to=None):
 
 
 def sfx_launch(rng):
-    dur = 0.35
+    # 音效6：130~150ms 发射嗡鸣 + 短尾音（总长约 0.30s）
+    dur = 0.30
     n = nsamp(dur)
     t = tline(n)
-    out = 0.7 * _blip(190.0, dur, duty=0.125, decay_tau=0.16,
-                      slide_to=980.0)[:n]
-    nz = noise_burst(dur, amp=1.0, hp=700.0, lp=9000.0, rng=rng)[:n]
-    nz *= np.minimum(1.0, t / 0.03) * np.exp(-t / 0.13)
-    out += 0.55 * nz
-    return finalize_sfx(out, peak_db=-1.0)
+    out = np.zeros(n)
+    # 嗡鸣主体：两个失谐方波上扫
+    overlay(out, pulse(180.0, 0.145, duty=0.25, amp=1.0, attack=0.004,
+                       release=0.02, decay_tau=0.09, slide_to=760.0,
+                       vib_hz=32.0, vib_cents=25.0), 0.0, 0.85)
+    overlay(out, pulse(186.0, 0.145, duty=0.125, amp=1.0, attack=0.004,
+                       release=0.02, decay_tau=0.09, slide_to=730.0,
+                       vib_hz=29.0, vib_cents=25.0), 0.0, 0.45)
+    # 尾音
+    overlay(out, pulse(760.0, 0.14, duty=0.5, amp=1.0, attack=0.002,
+                       release=0.05, decay_tau=0.07), 0.11, 0.18)
+    # 气流噪声
+    nz = noise_burst(dur, amp=1.0, hp=600.0, lp=8000.0, rng=rng)[:n]
+    nz *= np.minimum(1.0, t / 0.02) * np.exp(-t / 0.12)
+    out += 0.28 * nz
+    return finalize_sfx(out, peak_db=-1.0, fade_out=0.04)
 
 
 def sfx_peg(rng):
@@ -818,16 +961,16 @@ def sfx_peg_green(rng):
 
 
 def sfx_slot(rng):
-    dur = 0.5
+    # 音效5：入槽“啵” 150ms：快速下滑脉冲 + 低频 pop
+    dur = 0.15
     out = np.zeros(nsamp(dur))
-    for k, (tt, f) in enumerate(((0.00, 988.0), (0.06, 1319.0),
-                                  (0.12, 1760.0), (0.19, 2637.0))):
-        overlay(out, _blip(f, 0.14, duty=0.25, decay_tau=0.05), tt,
-                0.7 - 0.08 * k)
-    overlay(out, noise_burst(0.09, amp=1.0, hp=4000.0, lp=14000.0,
-                             decay_tau=0.02, rng=rng), 0.23, 0.35)
-    overlay(out, triangle(95.0, 0.22, amp=1.0, decay_tau=0.08,
-                          slide_to=55.0), 0.20, 0.45)
+    overlay(out, pulse(720.0, 0.11, duty=0.5, amp=1.0, attack=0.002,
+                       release=0.02, decay_tau=0.035, slide_to=300.0),
+            0.0, 0.75)
+    overlay(out, triangle(170.0, 0.10, amp=1.0, attack=0.002, release=0.02,
+                          decay_tau=0.03, slide_to=85.0), 0.0, 0.55)
+    overlay(out, noise_burst(0.02, amp=1.0, hp=1200.0, lp=7000.0,
+                             decay_tau=0.008, rng=rng), 0.0, 0.25)
     return finalize_sfx(out, peak_db=-1.0, fade_out=0.02)
 
 
@@ -867,11 +1010,75 @@ def sfx_buy(rng):
 
 
 def sfx_click(rng):
-    dur = 0.05
-    out = _blip(1080.0, dur, duty=0.5, decay_tau=0.008)
-    overlay(out, noise_burst(0.012, amp=0.5, hp=3000.0, lp=12000.0,
-                             rng=rng), 0.0, 0.5)
-    return finalize_sfx(out, peak_db=-1.0, fade_in=0.0, fade_out=0.01)
+    # 音效1：点击按钮 / 商店刷新，130~150ms 轻击
+    dur = 0.14
+    out = np.zeros(nsamp(dur))
+    overlay(out, pulse(900.0, 0.07, duty=0.5, amp=1.0, attack=0.002,
+                       release=0.02, decay_tau=0.022), 0.0, 0.5)
+    overlay(out, pulse(1340.0, 0.05, duty=0.25, amp=1.0, attack=0.002,
+                       release=0.015, decay_tau=0.014), 0.012, 0.25)
+    overlay(out, noise_burst(0.012, amp=1.0, hp=2500.0, lp=10000.0,
+                             rng=rng), 0.0, 0.2)
+    return finalize_sfx(out, peak_db=-1.0, fade_in=0.001, fade_out=0.03)
+
+
+def sfx_success(rng):
+    # 音效3：道具 / 合成成功“嗡”，80~130ms 颤音方波和弦
+    dur = 0.11
+    out = np.zeros(nsamp(dur))
+    for k, (deg, octv) in enumerate(((0, 5), (2, 5), (4, 6))):
+        overlay(out, pulse(penta(deg, octv), dur, duty=0.5, amp=1.0,
+                           attack=0.004, release=0.03, decay_tau=0.07,
+                           vib_hz=24.0, vib_cents=14.0), 0.0,
+                0.55 - 0.10 * k)
+    overlay(out, noise_burst(0.01, amp=1.0, hp=4000.0, lp=12000.0,
+                             decay_tau=0.004, rng=rng), 0.0, 0.15)
+    return finalize_sfx(out, peak_db=-1.0, fade_out=0.015)
+
+
+def sfx_synth_fail(rng):
+    # 音效4：合成失败“咔”（破碎），60~90ms
+    dur = 0.08
+    out = np.zeros(nsamp(dur))
+    overlay(out, noise_burst(0.06, amp=1.0, hp=1500.0, lp=11000.0,
+                             decay_tau=0.014, rng=rng), 0.0, 0.8)
+    overlay(out, pulse(760.0, 0.07, duty=0.5, amp=1.0, attack=0.001,
+                       release=0.01, decay_tau=0.02, slide_to=220.0),
+            0.0, 0.55)
+    overlay(out, triangle(150.0, 0.08, amp=1.0, decay_tau=0.02,
+                          slide_to=70.0), 0.0, 0.30)
+    return finalize_sfx(out, peak_db=-1.0, bits=7, fade_out=0.01)
+
+
+def sfx_door(rng):
+    # 音效7：进入关卡开门 2.6s：低频隆隆 + 石门摩擦 + 开启钟声
+    dur = 2.6
+    n = nsamp(dur)
+    t = tline(n)
+    out = np.zeros(n)
+    rumble = noise_burst(dur, amp=1.0, hp=60.0, lp=260.0, rng=rng)[:n]
+    rumble *= np.minimum(1.0, t / 0.25) * \
+        np.exp(-np.maximum(0.0, t - 0.6) / 0.9)
+    out += 0.45 * rumble
+    # 石门摩擦：带振幅起伏的中频噪声
+    creak = noise_burst(1.2, amp=1.0, hp=350.0, lp=2200.0, rng=rng)
+    tc = tline(len(creak))
+    creak *= (0.55 + 0.45 * np.sin(TAU * 11.0 * tc)) * \
+        np.minimum(1.0, tc / 0.15) * np.exp(-tc / 1.1)
+    overlay(out, creak, 0.35, 0.35)
+    # 门轴滑音
+    overlay(out, pulse(90.0, 1.3, duty=0.5, amp=1.0, attack=0.02,
+                       release=0.1, decay_tau=1.0, slide_to=240.0,
+                       vib_hz=6.0, vib_cents=20.0), 0.30, 0.25)
+    # 开启后的钟声（希望感）
+    for k, (deg, octv) in enumerate(((0, 5), (3, 5), (0, 6))):
+        overlay(out, pulse(penta(deg, octv), 1.4, duty=0.25, amp=1.0,
+                           attack=0.01, release=0.2, decay_tau=0.7,
+                           vib_hz=5.0, vib_cents=8.0),
+                1.35 + 0.05 * k, 0.20)
+    overlay(out, triangle(pitch("D3"), 1.0, amp=1.0, attack=0.01,
+                          release=0.2, decay_tau=0.5), 1.35, 0.18)
+    return finalize_sfx(out, peak_db=-1.0, fade_out=0.25)
 
 
 def sfx_guardian(rng):
@@ -947,11 +1154,15 @@ SFX_SPECS = {
     "void": (sfx_void, 0.0),
     "coin": (sfx_coin, 0.0),
     "buy": (sfx_buy, 0.0),
-    "click": (sfx_click, -12.0),
+    "click": (sfx_click, -10.0),
     "guardian": (sfx_guardian, 0.0),
     "crack": (sfx_crack, 0.0),
     "win": (sfx_win, 0.0),
     "lose": (sfx_lose, 0.0),
+    # v1.6 按《基础策划案(3)》新增（旧键全部保留）
+    "success": (sfx_success, 0.0),
+    "synth_fail": (sfx_synth_fail, -2.0),
+    "door": (sfx_door, 0.0),
 }
 
 
@@ -1045,9 +1256,9 @@ def main():
           "| libvorbis:", has_vorbis)
     print("[gen_audio] temp:", TMP_DIR)
 
-    bgm = [("bgm_menu", build_menu), ("bgm_battle", build_battle),
-           ("bgm_shop", build_shop), ("bgm_victory", build_victory),
-           ("bgm_defeat", build_defeat)]
+    bgm = [("bgm_main", build_main), ("bgm_menu", build_menu),
+           ("bgm_battle", build_battle), ("bgm_shop", build_shop),
+           ("bgm_victory", build_victory), ("bgm_defeat", build_defeat)]
     report = []
     ext = ".ogg"
     enc_desc = ""
@@ -1055,7 +1266,7 @@ def main():
     if args.only != "sfx":
         for name, builder in bgm:
             x, dur, bpm = builder()
-            loop = name in ("bgm_menu", "bgm_battle", "bgm_shop")
+            loop = name in ("bgm_main", "bgm_menu", "bgm_battle", "bgm_shop")
             info = analyze(x, name, loop=loop)
             info["bpm"] = bpm
             info["loop"] = loop

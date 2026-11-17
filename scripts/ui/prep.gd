@@ -2,7 +2,7 @@ extends Control
 ## 《？！珠珠！？》v1.2 准备阶段（PREP）界面。
 ##
 ## 上半屏 = 命运商店（3 件货品、金币、关卡法则、命运事件、目标）；
-## 下半屏 = 查看牌组（待用卡牌/装备、弹珠库、本关弹珠槽与已绑卡牌）。
+## 下半屏 = 商店 P2 三行（携带道具 / 新购道具 / 携带弹珠，均可点击进入个人信息配置）。
 ## 接口见 docs/CONTRACT_V4.md 第 4 节：
 ##   signal start_pressed(double_mode: bool)
 ##   func open_prep(level: int, offers: Array[String]) -> void
@@ -10,6 +10,7 @@ extends Control
 signal start_pressed(double_mode: bool)
 
 const UI := preload("res://scripts/ui/ui_theme.gd")
+const DetailPopup := preload("res://scripts/ui/detail_popup.gd")
 
 var _gs := UI.game_state()
 var _built := false
@@ -26,12 +27,16 @@ var _buff_label: Label = null
 var _event_label: Label = null
 var _cards_row: HBoxContainer = null
 var _pending_row: HBoxContainer = null
-var _library_label: Label = null
+var _new_row: HBoxContainer = null
 var _slots_row: HBoxContainer = null
+var _char_panel: Control = null
 var _status_label: Label = null
 var _status_tween: Tween = null
 var _double_dialog: Control = null
 var _dialog_panel: PanelContainer = null
+var _refresh_btn: Button = null
+var _refresh_hint: Label = null
+var _detail_popup: Control = null
 
 
 func _ready() -> void:
@@ -62,6 +67,10 @@ func open_prep(level: int, offers: Array[String]) -> void:
 	_offers.clear()
 	for id in offers:
 		if FateConfig.ITEMS.has(id):
+			_offers.append(id)
+	# 契约：商店货品使用 GameState.roll_shop_offers()（守命低语权重已在 GameState 生效）
+	if _offers.is_empty() and _gs != null:
+		for id in _gs.roll_shop_offers():
 			_offers.append(id)
 	_bought_ids.clear()
 	if _double_dialog != null:
@@ -116,8 +125,25 @@ func _build_ui() -> void:
 	info_row.add_child(_build_info_panel("命运事件", false))
 	root.add_child(info_row)
 
+	# 刷新货架（消耗命核碎片，费用随刷新次数 +1）
+	var refresh_row := UI.hbox(10)
+	var refresh_tip := UI.label("每关可刷新货架，费用随刷新次数递增", 11,
+			FateConfig.COLOR_TEXT_DIM)
+	refresh_row.add_child(refresh_tip)
+	var refresh_fill := Control.new()
+	refresh_fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	refresh_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	refresh_row.add_child(refresh_fill)
+	_refresh_hint = UI.label("", 11, FateConfig.COLOR_TEXT_DIM)
+	refresh_row.add_child(_refresh_hint)
+	_refresh_btn = UI.button("刷新货架（1 命核碎片）", 13, 40.0)
+	_refresh_btn.custom_minimum_size = Vector2(230.0, 40.0)
+	_refresh_btn.pressed.connect(_on_refresh_pressed)
+	refresh_row.add_child(_refresh_btn)
+	root.add_child(refresh_row)
+
 	_cards_row = UI.hbox(14)
-	_cards_row.custom_minimum_size = Vector2(0.0, 220.0)
+	_cards_row.custom_minimum_size = Vector2(0.0, 204.0)
 	root.add_child(_cards_row)
 
 	var divider := ColorRect.new()
@@ -153,7 +179,7 @@ func _build_header() -> Control:
 	_coins_label = UI.label("9", 28, FateConfig.COLOR_GOLD)
 	_coins_label.custom_minimum_size = Vector2(34.0, 0.0)
 	coin_chip.add_child(_coins_label)
-	coin_chip.add_child(UI.label("金币", 15, FateConfig.COLOR_TEXT_DIM))
+	coin_chip.add_child(UI.label("命核碎片", 15, FateConfig.COLOR_TEXT_DIM))
 	row.add_child(coin_chip)
 
 	var close_btn := UI.button("✕", 26, 52.0)
@@ -179,6 +205,8 @@ func _build_info_panel(heading: String, is_buff: bool) -> PanelContainer:
 			FateConfig.COLOR_GOLD_DIM if is_buff else FateConfig.COLOR_VIOLET))
 	if is_buff:
 		_buff_label = UI.label("—", 16, FateConfig.COLOR_TEXT)
+		_buff_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_buff_label.custom_minimum_size = Vector2(0.0, 24.0)
 		box.add_child(_buff_label)
 	else:
 		_event_label = UI.label("—", 16, FateConfig.COLOR_TEXT)
@@ -188,37 +216,40 @@ func _build_info_panel(heading: String, is_buff: bool) -> PanelContainer:
 
 
 func _build_deck_section() -> VBoxContainer:
-	var section := UI.vbox(6)
+	# v1.7 商店 P2：三行 —— 携带道具（可点击改配置）/ 新购道具 / 携带弹珠（可点击改配置）
+	var section := UI.vbox(4)
 
-	var head := UI.hbox(10)
-	head.add_child(UI.label("查看牌组", 20, FateConfig.COLOR_GOLD))
-	head.add_child(UI.label("本关携带的卡牌 / 装备与本关弹珠概览", 11,
-			FateConfig.COLOR_TEXT_DIM))
-	var fill := Control.new()
-	fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	head.add_child(fill)
-	_library_label = UI.label("弹珠库 普通 ×0 · 进阶 ×0", 13,
-			FateConfig.COLOR_TEXT_DIM)
-	head.add_child(_library_label)
-	section.add_child(head)
-
-	var pending_row := UI.hbox(8)
-	pending_row.custom_minimum_size = Vector2(0.0, 54.0)
-	pending_row.add_child(UI.label("待用卡牌 / 装备", 13,
-			FateConfig.COLOR_TEXT_DIM))
+	var carried_row := UI.hbox(8)
+	carried_row.custom_minimum_size = Vector2(0.0, 54.0)
+	carried_row.add_child(_make_section_button("携带道具",
+			_on_open_items_pressed))
 	_pending_row = UI.hbox(8)
 	_pending_row.alignment = BoxContainer.ALIGNMENT_BEGIN
-	pending_row.add_child(_pending_row)
-	var pending_fill := Control.new()
-	pending_fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pending_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pending_row.add_child(pending_fill)
-	section.add_child(pending_row)
+	carried_row.add_child(_pending_row)
+	var carried_fill := Control.new()
+	carried_fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	carried_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	carried_row.add_child(carried_fill)
+	section.add_child(carried_row)
+
+	var new_row := UI.hbox(8)
+	new_row.custom_minimum_size = Vector2(0.0, 54.0)
+	var new_title := UI.label("新购道具", 20, FateConfig.COLOR_GOLD)
+	new_title.custom_minimum_size = Vector2(112.0, 0.0)
+	new_row.add_child(new_title)
+	_new_row = UI.hbox(8)
+	_new_row.alignment = BoxContainer.ALIGNMENT_BEGIN
+	new_row.add_child(_new_row)
+	var new_fill := Control.new()
+	new_fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	new_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	new_row.add_child(new_fill)
+	section.add_child(new_row)
 
 	var slot_line := UI.hbox(8)
-	slot_line.custom_minimum_size = Vector2(0.0, 58.0)
-	slot_line.add_child(UI.label("本关弹珠", 13, FateConfig.COLOR_TEXT_DIM))
+	slot_line.custom_minimum_size = Vector2(0.0, 62.0)
+	slot_line.add_child(_make_section_button("携带弹珠",
+			_on_open_balls_pressed))
 	_slots_row = UI.hbox(10)
 	_slots_row.alignment = BoxContainer.ALIGNMENT_BEGIN
 	_slots_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -226,6 +257,25 @@ func _build_deck_section() -> VBoxContainer:
 	section.add_child(slot_line)
 
 	return section
+
+
+## 行首黄色可点击标题（无边框，触屏按钮）。
+func _make_section_button(text: String, handler: Callable) -> Button:
+	var btn := Button.new()
+	btn.text = text
+	btn.flat = true
+	btn.custom_minimum_size = Vector2(112.0, 40.0)
+	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	btn.add_theme_font_size_override("font_size", 20)
+	btn.add_theme_color_override("font_color", FateConfig.COLOR_GOLD)
+	btn.add_theme_color_override("font_hover_color", FateConfig.COLOR_JADE)
+	btn.add_theme_color_override("font_pressed_color", FateConfig.COLOR_JADE)
+	var empty := StyleBoxEmpty.new()
+	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
+		btn.add_theme_stylebox_override(state, empty)
+	btn.pressed.connect(handler)
+	return btn
 
 
 func _build_footer() -> Control:
@@ -236,8 +286,6 @@ func _build_footer() -> Control:
 			HORIZONTAL_ALIGNMENT_CENTER)
 	_status_label.visible = false
 	box.add_child(_status_label)
-	box.add_child(UI.label("购买 / 整理完毕后点击「开始试炼」，进入发射阶段",
-			13, FateConfig.COLOR_TEXT_DIM, HORIZONTAL_ALIGNMENT_CENTER))
 
 	var center := CenterContainer.new()
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -280,7 +328,7 @@ func _build_double_dialog() -> void:
 			FateConfig.COLOR_TEXT_DIM, HORIZONTAL_ALIGNMENT_CENTER))
 
 	var lines := UI.vbox(6)
-	for text in ["得分 ×2 · 金币 ×2", "黑色立柱扣分 ×2", "失败时命运碎片减半",
+	for text in ["得分 ×2 · 命核碎片 ×2", "黑色立柱扣分 ×2", "失败时命运碎片减半",
 			"风险与回报，皆随此注翻倍"]:
 		var color := FateConfig.COLOR_CRIMSON if text.contains("失败") \
 				else FateConfig.COLOR_TEXT
@@ -313,20 +361,31 @@ func refresh() -> void:
 		_gs = UI.game_state()
 		if _gs == null:
 			return
-	_level_label.text = "第 %d 间 · %s" % [_level,
+	# v1.8：隐藏关（第 10 间/命源）未解锁前只显示「第 X 间」，不泄露总关数
+	var level_display := ""
+	if _gs.level == _level:
+		level_display = _gs.level_display()
+	elif _gs.has_source_ball():
+		level_display = "第 %d / %d 间" % [_level, FateConfig.MAX_LEVEL]
+	else:
+		level_display = "第 %d 间" % _level
+	_level_label.text = "%s · %s" % [level_display,
 			FateConfig.LEVEL_NAMES[_level - 1]]
 	if _gs.level == _level:
 		_target_label.text = "目标 %d 分" % _gs.get_target()
 	else:
 		_target_label.text = "目标 %d 分" % FateConfig.LEVEL_TARGETS[_level - 1]
 	_coins_label.text = str(_gs.coins)
-	_buff_label.text = FateConfig.LEVEL_BUFFS[_level - 1]
+	var buff: Dictionary = FateConfig.LEVEL_BUFFS[_level - 1]
+	_buff_label.text = "%s：%s" % [String(buff.get("name", "")),
+			String(buff.get("desc", ""))]
 	var event: Dictionary = _gs.fate_event
 	if event.is_empty():
 		_event_label.text = "本关没有命运事件"
 	else:
 		_event_label.text = "%s：%s" % [String(event.get("name", "")),
 				String(event.get("desc", ""))]
+	_update_refresh_btn()
 	_rebuild_cards()
 	_update_deck()
 
@@ -347,7 +406,8 @@ func _make_offer_card(id: String) -> PanelContainer:
 	var cost := int(info.get("cost", 0))
 	var tag := String(info.get("tag", ""))
 	var kind := String(info.get("kind", "equipment"))
-	var owned_passive := kind == "passive" and _gs != null and _gs.has_item(id)
+	var owned_passive := kind == "passive" and _gs != null \
+			and _gs.run_items.has(id)
 	var can_buy := _gs != null and _gs.can_buy_item(id)
 
 	var card := PanelContainer.new()
@@ -363,7 +423,13 @@ func _make_offer_card(id: String) -> PanelContainer:
 	card.add_child(box)
 
 	var top := UI.hbox(8)
-	top.add_child(UI.item_icon(id, 44.0))
+	var icon_box := Control.new()
+	icon_box.custom_minimum_size = Vector2(44.0, 44.0)
+	icon_box.mouse_filter = Control.MOUSE_FILTER_STOP
+	icon_box.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	icon_box.gui_input.connect(_on_detail_icon_input.bind(id))
+	icon_box.add_child(UI.item_icon(id, 44.0))
+	top.add_child(icon_box)
 	var name_label := UI.label(item_name, 20, FateConfig.COLOR_GOLD)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(name_label)
@@ -382,13 +448,16 @@ func _make_offer_card(id: String) -> PanelContainer:
 	var price_row := UI.hbox(5)
 	price_row.add_child(UI.icon("coin", 16.0))
 	price_row.add_child(UI.label(str(cost), 16, FateConfig.COLOR_GOLD))
-	price_row.add_child(UI.label("金币", 11, FateConfig.COLOR_TEXT_DIM))
+	price_row.add_child(UI.label("命核碎片", 11, FateConfig.COLOR_TEXT_DIM))
 	box.add_child(price_row)
 
 	var buy_btn := UI.button("购买", 18, 52.0)
-	if _bought_ids.has(id):
-		buy_btn.text = "已购 ✓"
-	if owned_passive:
+	var bought_this_room := _gs != null and _gs.is_item_bought(id)
+	if bought_this_room:
+		buy_btn.text = "已购买"
+		buy_btn.disabled = true
+		buy_btn.modulate = Color(0.62, 0.62, 0.68)
+	elif owned_passive:
 		buy_btn.text = "已获得"
 		buy_btn.disabled = true
 	elif not can_buy:
@@ -406,6 +475,8 @@ func _kind_label(kind: String) -> String:
 			return "拖到弹珠"
 		"passive":
 			return "立即生效"
+		"instant":
+			return "购买即生效"
 		"library":
 			return "进弹珠库"
 		_:
@@ -413,52 +484,48 @@ func _kind_label(kind: String) -> String:
 
 
 func _update_deck() -> void:
+	# 携带道具（pending items，逐个不堆叠）
 	for child in _pending_row.get_children():
 		_pending_row.remove_child(child)
 		child.queue_free()
 	var pending: Array[String] = []
+	var bought: Array[String] = []
 	if _gs != null:
 		pending = _gs.get_pending_items()
+		bought = _gs.bought_items_this_room.duplicate()
 	if pending.is_empty():
-		var empty := UI.label("（空）商店购买的卡牌 / 装备会出现在这里", 12,
-				FateConfig.COLOR_TEXT_DIM)
-		empty.set_meta("pending_icon", true)
-		_pending_row.add_child(empty)
+		_pending_row.add_child(UI.label("（空）", 12, FateConfig.COLOR_TEXT_DIM))
 	else:
-		var counts: Dictionary = {}
-		var order: Array[String] = []
 		for id in pending:
-			if not counts.has(id):
-				counts[id] = 0
-				order.append(id)
-			counts[id] = int(counts[id]) + 1
-		for id in order:
-			_pending_row.add_child(_make_pending_chip(id, int(counts[id])))
+			_pending_row.add_child(_make_pending_chip(id))
 
-	if _gs != null:
-		_library_label.text = "弹珠库 普通 ×%d · 进阶 ×%d" % [
-				_gs.library_normal, _gs.library_advanced]
-		_update_slots()
+	# 新购道具（本关已购买，逐个不堆叠）
+	for child in _new_row.get_children():
+		_new_row.remove_child(child)
+		child.queue_free()
+	if bought.is_empty():
+		_new_row.add_child(UI.label("（本关尚未购买）", 12,
+				FateConfig.COLOR_TEXT_DIM))
+	else:
+		for id in bought:
+			_new_row.add_child(_make_pending_chip(id))
+
+	_update_slots()
 
 
-func _make_pending_chip(id: String, count: int) -> Control:
-	var chip := UI.hbox(4)
-	chip.set_meta("pending_icon", true)
+func _make_pending_chip(id: String) -> Control:
+	# v1.6/1.7：相同道具不堆叠，逐个图标
 	var holder := Panel.new()
 	holder.custom_minimum_size = Vector2(44.0, 44.0)
-	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.mouse_filter = Control.MOUSE_FILTER_STOP
+	holder.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	holder.add_theme_stylebox_override("panel", UI.panel_style(
 			Color(0.20, 0.14, 0.31, 0.95), FateConfig.COLOR_GOLD_DIM, 10, 1, false))
-	chip.add_child(holder)
+	holder.gui_input.connect(_on_detail_icon_input.bind(id))
 	var tex := UI.item_icon(id, 34.0)
 	tex.position = Vector2(5.0, 5.0)
 	holder.add_child(tex)
-	var info: Dictionary = FateConfig.ITEMS.get(id, {})
-	var display_name := String(info.get("name", id))
-	var label := UI.label("%s×%d" % [display_name, count], 12,
-			FateConfig.COLOR_TEXT)
-	chip.add_child(label)
-	return chip
+	return holder
 
 
 func _update_slots() -> void:
@@ -469,13 +536,18 @@ func _update_slots() -> void:
 		return
 	for i in range(_gs.balls_total):
 		var slot: Dictionary = _gs.get_ball_slot(i)
-		var advanced := int(slot.get("type", 0)) == 1
+		var ball_type := clampi(int(slot.get("type", 0)), 0, 2)
 		var card := String(slot.get("card", ""))
 		var chip := UI.vbox(0)
 		chip.alignment = BoxContainer.ALIGNMENT_CENTER
-		var icon_center := CenterContainer.new()
-		icon_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		icon_center.add_child(UI.ball_icon(advanced, 34.0))
+		var icon_center := Control.new()
+		icon_center.custom_minimum_size = Vector2(38.0, 38.0)
+		icon_center.mouse_filter = Control.MOUSE_FILTER_STOP
+		icon_center.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		icon_center.gui_input.connect(_on_ball_icon_input.bind(ball_type))
+		var ball_icon := UI.ball_icon_type(ball_type, 34.0)
+		ball_icon.position = Vector2(2.0, 2.0)
+		icon_center.add_child(ball_icon)
 		chip.add_child(icon_center)
 		var card_label := UI.label("", 9,
 				FateConfig.COLOR_CRIMSON, HORIZONTAL_ALIGNMENT_CENTER)
@@ -488,11 +560,9 @@ func _update_slots() -> void:
 
 
 func _short_card_name(card_id: String) -> String:
-	var full := ""
-	if _gs != null:
-		full = _gs.get_card_name(card_id)
-	if full == "":
-		full = card_id
+	var full := card_id
+	if FateConfig.ITEMS.has(card_id):
+		full = String(FateConfig.ITEMS[card_id].get("name", card_id))
 	return full.trim_suffix("卡")
 
 
@@ -500,22 +570,132 @@ func _short_card_name(card_id: String) -> String:
 # 交互 / 动画
 # ==================================================================
 
+func _update_refresh_btn() -> void:
+	if _refresh_btn == null or _gs == null:
+		return
+	var cost := _gs.get_refresh_cost()
+	_refresh_btn.text = "刷新货架（%d 命核碎片）" % cost
+	_refresh_btn.disabled = _gs.coins < cost
+	if _refresh_hint != null:
+		_refresh_hint.text = "已刷新 %d 次" % int(_gs.refresh_count)
+
+
+func _on_refresh_pressed() -> void:
+	if _gs == null:
+		return
+	var cost := _gs.get_refresh_cost()
+	if _gs.coins < cost:
+		_flash("命核碎片不足，无法刷新")
+		return
+	var offers := _gs.refresh_shop_offers()
+	if offers.is_empty():
+		_flash("命核碎片不足，无法刷新")
+		return
+	_offers.clear()
+	for id in offers:
+		_offers.append(id)
+	UI.play_sfx("click")
+	refresh()
+
+
 func _on_buy(id: String) -> void:
 	if _gs == null:
 		return
+	if _gs.is_item_bought(id):
+		_flash("本轮已经购买过这件道具了")
+		return
 	if not _gs.can_buy_item(id):
 		var info: Dictionary = FateConfig.ITEMS.get(id, {})
-		if String(info.get("kind", "")) == "passive" and _gs.has_item(id):
+		if String(info.get("kind", "")) == "passive" \
+				and _gs.run_items.has(id):
 			_flash("这件遗物已经生效了")
 		else:
-			_flash("金币不足")
+			_flash("命核碎片不足")
 		return
 	if _gs.buy_item(id):
-		UI.play_sfx("buy")
+		UI.play_sfx("success")
 		_bought_ids[id] = true
 		refresh()
 	else:
 		_flash("无法购买")
+
+
+# ==================================================================
+# 道具 / 弹珠详情弹窗
+# ==================================================================
+
+func _ensure_detail_popup() -> Control:
+	if _detail_popup == null or not is_instance_valid(_detail_popup):
+		_detail_popup = DetailPopup.new()
+		add_child(_detail_popup)
+	return _detail_popup
+
+
+func _show_item_detail(item_id: String) -> void:
+	if FateConfig.ITEMS.has(item_id):
+		_ensure_detail_popup().call("open_item", item_id)
+
+
+func _show_ball_detail(ball_type: int) -> void:
+	_ensure_detail_popup().call("open_ball", ball_type)
+
+
+func _on_detail_icon_input(event: InputEvent, item_id: String) -> void:
+	if not (event is InputEventMouseButton):
+		return
+	var mb := event as InputEventMouseButton
+	if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
+		_show_item_detail(item_id)
+
+
+func _on_ball_icon_input(event: InputEvent, ball_type: int) -> void:
+	if not (event is InputEventMouseButton):
+		return
+	var mb := event as InputEventMouseButton
+	if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
+		_show_ball_detail(ball_type)
+
+
+func _on_open_items_pressed() -> void:
+	_open_character_tab(2)
+
+
+func _on_open_balls_pressed() -> void:
+	_open_character_tab(1)
+
+
+## 从商店打开个人信息面板并定位到指定 tab（0 角色信息 / 1 弹珠 / 2 卡牌）。
+func _open_character_tab(tab_index: int) -> void:
+	UI.play_sfx("click")
+	if _char_panel != null and is_instance_valid(_char_panel):
+		if _char_panel.has_method("open_to_tab"):
+			_char_panel.call("open_to_tab", tab_index)
+		elif _char_panel.has_method("open_panel"):
+			_char_panel.call("open_panel", tab_index)
+		return
+	var path := "res://scenes/ui/character_panel.tscn"
+	if not ResourceLoader.exists(path):
+		_flash("个人信息面板缺失")
+		return
+	var packed := load(path)
+	if not (packed is PackedScene):
+		_flash("个人信息面板加载失败")
+		return
+	_char_panel = (packed as PackedScene).instantiate()
+	add_child(_char_panel)
+	if _char_panel.has_signal("closed"):
+		_char_panel.connect("closed", Callable(self, "_on_char_panel_closed"))
+	if _char_panel.has_method("open_to_tab"):
+		_char_panel.call("open_to_tab", tab_index)
+	elif _char_panel.has_method("open_panel"):
+		_char_panel.call("open_panel", tab_index)
+
+
+func _on_char_panel_closed() -> void:
+	if _char_panel != null and is_instance_valid(_char_panel):
+		_char_panel.queue_free()
+	_char_panel = null
+	refresh()
 
 
 func _on_start_requested() -> void:
@@ -596,7 +776,8 @@ func _on_items_changed() -> void:
 	refresh()
 
 
-func _on_library_changed(_normal_count: int, _advanced_count: int) -> void:
+func _on_library_changed(_normal_count: int, _advanced_count: int,
+		_high_count: int) -> void:
 	refresh()
 
 

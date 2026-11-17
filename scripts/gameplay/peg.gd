@@ -17,17 +17,18 @@ var _flash: float = 0.0
 var _flash_color := Color(1.0, 1.0, 1.0)
 var _equip_flash: float = 0.0
 var _sprite: Sprite2D = null
+var _collision_shape: CollisionShape2D = null
 
 func _ready() -> void:
 	add_to_group("peg")
 	set_meta("peg_type", peg_type)
 	set_meta("equipped", equipped)
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	var shape := CollisionShape2D.new()
+	_collision_shape = CollisionShape2D.new()
 	var circle := CircleShape2D.new()
 	circle.radius = FateConfig.PEG_RADIUS
-	shape.shape = circle
-	add_child(shape)
+	_collision_shape.shape = circle
+	add_child(_collision_shape)
 	z_index = 2
 	_sprite = _make_sprite()
 	if _sprite != null:
@@ -59,10 +60,24 @@ func _make_sprite() -> Sprite2D:
 
 ## 被装备改造（由 board.equip_at 调用）
 func equip(item_id: String) -> void:
-	equipped = item_id
-	set_meta("equipped", item_id)
 	_equip_flash = 1.0
 	set_process(true)
+	match item_id:
+		"pass_chisel":
+			# 穿命透障凿：该立柱失去碰撞，弹珠可直接穿过
+			equipped = "pass_chisel"
+			set_meta("equipped", "")
+			if _collision_shape != null:
+				_collision_shape.set_deferred("disabled", true)
+		"spindle_nail":
+			# 命运纺锤钉：变为只有基础反弹的普通立柱
+			equipped = "spindle_nail"
+			set_meta("equipped", "")
+			peg_type = FateConfig.PEG_TYPE_NORMAL
+			set_meta("peg_type", peg_type)
+		_:
+			equipped = item_id
+			set_meta("equipped", item_id)
 	queue_redraw()
 
 ## 被弹珠撞击时闪一下；color 可指定闪光颜色（黑柱暗闪/白柱亮闪）

@@ -35,6 +35,8 @@ var fx = null
 var camera: Camera2D = null
 
 var _active_balls: Array = []
+var _break_active := false
+var _break_timer := 0.0
 var _hud_layer: CanvasLayer = null
 var _ui_layer: CanvasLayer = null
 var _prep_layer: CanvasLayer = null
@@ -106,18 +108,15 @@ func _process(delta: float) -> void:
 				if float(ball.global_position.y) < 260.0:
 					ball.linear_velocity.x = -520.0
 	if phase == Phase.PLAY:
+		_update_break_state(delta)
 		_check_level_end()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		_goto_menu()
-
-func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey:
-		var key := event as InputEventKey
-		if key.pressed and not key.echo and key.keycode == KEY_ESCAPE:
-			_goto_menu()
-			get_viewport().set_input_as_handled()
+	elif what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST:
+		# 手机切后台 / 关闭窗口：保存进行中的一局，便于续关
+		GameState.save_game()
 
 # ================= 场景骨架 =================
 
@@ -178,13 +177,18 @@ func _close_overlay() -> void:
 func _enter_prep() -> void:
 	phase = Phase.PREP
 	_level_resolved = false
+	_break_active = false
+	_break_timer = 0.0
 	_cleanup_active_balls()
 	if hud != null:
 		hud.visible = false
 	if launcher != null:
 		launcher.set_locked(true)
 	Audio.play_bgm("menu")
-	_prep_offers = _roll_offers()
+	# v1.4：商店按权重抽取（守命低语 buff 生效）
+	_prep_offers = GameState.roll_shop_offers()
+	if _prep_offers.is_empty():
+		_prep_offers = _roll_offers()
 	_open_prep_ui()
 
 ## 房间开始时抽取 3 件商店货品
@@ -241,8 +245,8 @@ func _build_prep_fallback() -> void:
 	title.add_theme_color_override("font_color", FateConfig.COLOR_GOLD)
 	panel.add_child(title)
 	var info := Label.new()
-	info.text = "第%d间「%s」｜目标 %d 分｜%s" % [
-		GameState.level, GameState.get_level_name(), GameState.get_target(), GameState.get_level_buff_text()]
+	info.text = "%s「%s」｜目标 %d 分｜%s" % [
+		GameState.level_display(), GameState.get_level_name(), GameState.get_target(), GameState.get_level_buff_text()]
 	info.position = Vector2(240.0, 72.0)
 	info.size = Vector2(800.0, 30.0)
 	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -320,26 +324,36 @@ func _make_prep_row(item_id: String, index: int) -> Control:
 	var buy := Button.new()
 	buy.custom_minimum_size = Vector2(120.0, 60.0)
 	buy.add_theme_font_size_override("font_size", 17)
-	buy.text = "%d 金币" % int(data.get("cost", 0))
+	buy.text = "%d 命核" % int(data.get("cost", 0))
 	buy.pressed.connect(_on_prep_buy.bind(item_id))
 	row.add_child(buy)
 	_prep_buttons.append({"id": item_id, "button": buy})
 	return row
 
 func _on_prep_buy(item_id: String) -> void:
+	if GameState.is_item_bought(item_id):
+		_show_prep_error("本间商店每种道具限购 1 次")
+		return
 	if GameState.buy_item(item_id):
 		Audio.play_sfx("buy")
 		_refresh_prep_ui()
 	else:
-		_show_prep_error("金币不足，命运拒绝了你")
+		_show_prep_error("命核碎片不足，命运拒绝了你")
 
 func _refresh_prep_ui() -> void:
 	if _prep_coins_label != null and is_instance_valid(_prep_coins_label):
-		_prep_coins_label.text = "金币 %d  ｜  行囊带入卡 %d" % [GameState.coins, GameState.run_loadout_cards.size()]
+		_prep_coins_label.text = "命核碎片 %d  ｜  行囊带入卡 %d" % [GameState.coins, GameState.run_loadout_cards.size()]
 	for entry in _prep_buttons:
 		var button = entry.get("button")
-		if button != null and is_instance_valid(button):
-			button.disabled = not GameState.can_buy_item(String(entry.get("id", "")))
+		if button == null or not is_instance_valid(button):
+			continue
+		var item_id := String(entry.get("id", ""))
+		if GameState.is_item_bought(item_id):
+			button.text = "已购买"
+			button.disabled = true
+		else:
+			button.text = "%d 命核" % int(FateConfig.ITEMS.get(item_id, {}).get("cost", 0))
+			button.disabled = not GameState.can_buy_item(item_id)
 
 func _show_prep_error(text: String) -> void:
 	if _prep_error_label == null or not is_instance_valid(_prep_error_label):
@@ -353,6 +367,8 @@ func _show_prep_error(text: String) -> void:
 func _on_prep_started(double_mode: bool = false) -> void:
 	if phase != Phase.PREP:
 		return
+	# 进入关卡前 = 存档点③（记录本关购买，失败重试/续关时恢复）
+	GameState.mark_checkpoint(FateConfig.CHECKPOINT_LEVEL, GameState.get_pending_items())
 	# 双倍注：先写入 GameState，再进入正式游玩
 	GameState.set_double_mode(double_mode)
 	phase = Phase.PLAY
@@ -372,7 +388,7 @@ func _on_prep_started(double_mode: bool = false) -> void:
 		if hud.has_method("set_phase_hint"):
 			var hint := "按住右下弹簧蓄力，松手发射（弹珠沿右侧轨道上行）"
 			if GameState.double_mode:
-				hint += "\n双倍注：得分/金币×2，黑柱惩罚×2，失败碎片减半"
+				hint += "\n双倍注：得分/命核×2，黑柱惩罚×2，失败碎片减半"
 			hud.call("set_phase_hint", hint)
 		if hud.has_method("refresh"):
 			hud.call("refresh")
@@ -380,6 +396,7 @@ func _on_prep_started(double_mode: bool = false) -> void:
 		launcher.set_locked(false)
 	board.set_gate_closed(false)
 	Audio.play_bgm("battle")
+	GameState.save_game()
 	_refresh_hud()
 	# 新手引导：只在第一次进入 PLAY 时显示
 	if GameState.should_show_tutorial():
@@ -456,6 +473,41 @@ func _on_tutorial_closed() -> void:
 		_tutorial_layer = null
 	GameState.mark_tutorial_seen()
 
+# ================= 关卡 buff：万流归宗（破命） =================
+
+## 本关命核碎片达到阈值 → 进入 break_seconds 秒破命：弹珠不灭、得分翻倍
+func _update_break_state(delta: float) -> void:
+	var threshold := GameState.get_break_threshold()
+	if threshold <= 0:
+		return
+	if not _break_active:
+		if GameState.level_coins_gained >= threshold:
+			_break_active = true
+			_break_timer = GameState.get_break_seconds()
+			for ball in _active_balls:
+				if ball != null and is_instance_valid(ball):
+					ball.immortal = true
+			Audio.play_sfx("win")
+			if hud != null and hud.has_method("set_phase_hint"):
+				hud.call("set_phase_hint", "万流归宗 · 破命！弹珠不灭，得分翻倍")
+			if fx != null:
+				fx.popup("万流归宗 · 破命", FateConfig.VIEW_SIZE * 0.5, FateConfig.COLOR_GOLD, 40)
+				fx.flash(FateConfig.COLOR_GOLD, 0.30, 0.7)
+	else:
+		_break_timer -= delta
+		if _break_timer <= 0.0:
+			_break_active = false
+			for ball in _active_balls:
+				if ball != null and is_instance_valid(ball):
+					ball.immortal = false
+			if hud != null and hud.has_method("set_phase_hint"):
+				hud.call("set_phase_hint", "破命结束 · 命运重归常轨")
+			if fx != null:
+				fx.popup("破命结束", FateConfig.VIEW_SIZE * 0.5, FateConfig.COLOR_TEXT_DIM, 26)
+
+func is_break_active() -> bool:
+	return _break_active
+
 # ================= 装备拖拽落点 =================
 
 func _on_equip_requested(item_id: String, screen_pos: Vector2) -> void:
@@ -490,9 +542,11 @@ func _on_launch_requested(power_t: float) -> void:
 		return
 	var card := String(info.get("card", ""))
 	var ball = BALL_SCRIPT.new()
-	ball.advanced = bool(info.get("advanced", false))
+	ball.type = int(info.get("type", FateConfig.BALL_TYPE_FATE))
+	ball.advanced = ball.type >= FateConfig.BALL_TYPE_CORE
 	ball.card = card
 	ball.radius_scale = FateConfig.SHRINK_SCALE if card == "shrinkcard" else 1.0
+	ball.immortal = _break_active
 	ball.position = FateConfig.LAUNCH_POS
 	add_child(ball)
 	_register_ball(ball)
@@ -520,6 +574,32 @@ func _register_ball(ball: Node) -> void:
 	ball.connect("white_coin", Callable(self, "_on_ball_white_coin"))
 	ball.connect("stuck_at", Callable(self, "_on_ball_stuck"))
 	ball.connect("split_requested", Callable(self, "_on_ball_split_requested").bind(ball))
+	ball.connect("eroded", Callable(self, "_on_ball_eroded").bind(ball))
+	ball.connect("recalled", Callable(self, "_on_ball_recalled").bind(ball))
+
+## 裂隙侵蚀：球撞绿柱/绿线累计达到上限后自毁（不结算分数）
+func _on_ball_eroded(world_pos: Vector2, ball: Node) -> void:
+	if ball == null or not is_instance_valid(ball):
+		return
+	Audio.play_sfx("crack")
+	if fx != null:
+		fx.popup("侵蚀自毁", world_pos + Vector2(0.0, -26.0), FateConfig.COLOR_JADE, 24)
+		fx.burst(world_pos, FateConfig.COLOR_JADE, 14, 200.0)
+	_finish_ball(ball)
+
+## 归命拾珠囊：弹珠被收回弹珠库，60% 额外获得一颗同型珠
+func _on_ball_recalled(world_pos: Vector2, ball_type: int, ball: Node) -> void:
+	if ball == null or not is_instance_valid(ball):
+		return
+	Audio.play_sfx("coin")
+	GameState.grant_extra_ball(ball_type)
+	var extra := randf() < 0.6
+	if extra:
+		GameState.grant_extra_ball(ball_type)
+	if fx != null:
+		fx.popup("收回弹珠" + (" +1" if extra else ""), world_pos + Vector2(0.0, -26.0), FateConfig.COLOR_GOLD, 24)
+	_refresh_hud()
+	_finish_ball(ball)
 
 func _on_ball_peg_hit(peg_type: int, world_pos: Vector2, equipped: String) -> void:
 	var sfx := &"peg"
@@ -553,7 +633,7 @@ func _on_ball_white_coin(world_pos: Vector2) -> void:
 	GameState.add_coins(amount)
 	Audio.play_sfx("coin")
 	if fx != null:
-		fx.popup("+%d 金币" % amount, world_pos + Vector2(0.0, -26.0), FateConfig.COLOR_GOLD, 24)
+		fx.popup("命核 +%d" % amount, world_pos + Vector2(0.0, -26.0), FateConfig.COLOR_GOLD, 24)
 	_refresh_hud()
 
 func _on_ball_stuck(world_pos: Vector2) -> void:
@@ -570,16 +650,18 @@ func _on_ball_split_requested(world_pos: Vector2, velocity: Vector2, source_ball
 	if source_ball == null or not is_instance_valid(source_ball):
 		return
 	call_deferred("_spawn_split_balls", world_pos, velocity,
-		bool(source_ball.get("advanced")), float(source_ball.get("radius_scale")))
+		int(source_ball.get("type")), float(source_ball.get("radius_scale")))
 
-func _spawn_split_balls(world_pos: Vector2, velocity: Vector2, advanced: bool, radius_scale: float) -> void:
+func _spawn_split_balls(world_pos: Vector2, velocity: Vector2, ball_type: int, radius_scale: float) -> void:
 	var base_angle := velocity.angle()
 	var speed := maxf(velocity.length() * 0.8, 260.0)
 	for i in 2:
 		var child = BALL_SCRIPT.new()
-		child.advanced = advanced
+		child.type = ball_type
+		child.advanced = ball_type >= FateConfig.BALL_TYPE_CORE
 		child.card = ""
 		child.radius_scale = radius_scale
+		child.immortal = _break_active
 		child.position = world_pos + Vector2(0.0, 16.0 + float(i) * 16.0)
 		add_child(child)
 		_register_ball(child)
@@ -599,17 +681,19 @@ func _on_slot_hit(ball: Node, slot_index: int, _mult: float, world_pos: Vector2)
 	if bool(ball.get("settled")):
 		return
 	ball.set("settled", true)
-	var advanced := bool(ball.get("advanced"))
+	var ball_type := int(ball.get("type"))
 	var card := String(ball.get("card"))
 	var buffed := card != ""
 	var yellow_hits := int(ball.get("yellow_hits"))
 	var black_hits := int(ball.get("black_hits"))
-	var base := GameState.get_ball_base(advanced)
+	var base := GameState.get_ball_base(ball_type)
 	# 黑柱：每撞一次最终得分 -1（双倍注时惩罚×2，最低 0）
 	if black_hits > 0:
 		base = maxi(0, base - black_hits * FateConfig.BLACK_PENALTY * GameState.get_penalty_mult())
-	# v1.2：倍率以 GameState 随机框配置为准
+	# 倍率以 GameState 随机框配置为准；万流归宗破命期间得分翻倍
 	var mult := GameState.get_pocket_mult(slot_index)
+	if _break_active:
+		mult *= 2.0
 	var value := GameState.award_ball_score(base, yellow_hits, mult, buffed)
 	var popup_pos := world_pos + Vector2(0.0, -40.0)
 	if hud != null and hud.has_method("popup_score"):
@@ -630,17 +714,20 @@ func _on_slot_hit(ball: Node, slot_index: int, _mult: float, world_pos: Vector2)
 			if mult >= 1.5:
 				fx.flash(FateConfig.COLOR_GOLD, 0.14, 0.4)
 				fx.shake(3.0)
-	# 随机框奖励：金币+2 / 再射一球（金币数受双倍注影响）
+	# 随机框奖励：命核+2 / 再射一球（命核数量受双倍注影响）
 	var coins_before_bonus := GameState.coins
 	var bonus := GameState.apply_pocket_bonus(slot_index)
 	if bonus == "coin2":
 		Audio.play_sfx("coin")
 		if fx != null:
-			fx.popup("金币 +%d" % maxi(GameState.coins - coins_before_bonus, 1), popup_pos + Vector2(0.0, -26.0), FateConfig.COLOR_GOLD, 22)
+			fx.popup("命核 +%d" % maxi(GameState.coins - coins_before_bonus, 1), popup_pos + Vector2(0.0, -26.0), FateConfig.COLOR_GOLD, 22)
 	elif bonus == "ball1":
 		Audio.play_sfx("launch", -4.0)
 		if fx != null:
 			fx.popup("再射一球", popup_pos + Vector2(0.0, -26.0), FateConfig.COLOR_JADE, 22)
+	elif bonus == "ball1_limit":
+		if fx != null:
+			fx.popup("再射一球已达上限", popup_pos + Vector2(0.0, -26.0), FateConfig.COLOR_TEXT_DIM, 20)
 	_finish_ball(ball)
 
 func _on_ball_fell_out(world_pos: Vector2, ball: Node) -> void:
@@ -649,7 +736,7 @@ func _on_ball_fell_out(world_pos: Vector2, ball: Node) -> void:
 	if bool(ball.get("settled")):
 		return
 	ball.set("settled", true)
-	var base := GameState.get_ball_base(bool(ball.get("advanced")))
+	var base := GameState.get_ball_base(int(ball.get("type")))
 	var black_hits := int(ball.get("black_hits"))
 	if black_hits > 0:
 		base = maxi(0, base - black_hits * FateConfig.BLACK_PENALTY * GameState.get_penalty_mult())
@@ -757,6 +844,11 @@ func _show_result(victory: bool, summary: Dictionary) -> void:
 		result.connect("retry_pressed", Callable(self, "_on_retry_pressed"))
 	if result.has_signal("menu_pressed"):
 		result.connect("menu_pressed", Callable(self, "_on_menu_pressed"))
+	# v1.6 失败结算：返回上一存档点（走廊①；level≤2 由 UI 禁用）
+	for sig in ["checkpoint_pressed", "prev_checkpoint_pressed", "checkpoint_return_pressed"]:
+		if result.has_signal(sig):
+			result.connect(sig, Callable(self, "_on_checkpoint_pressed"))
+			break
 
 func _on_retry_pressed() -> void:
 	if _result_victory:
@@ -765,10 +857,26 @@ func _on_retry_pressed() -> void:
 		if err != OK:
 			get_tree().reload_current_scene()
 	else:
+		# 失败重试本关：从零开始 PREP，但保留本关已购买道具（③存档点）
 		GameState.prepare_level(GameState.level)
 		var err := get_tree().change_scene_to_file(GAME_SCENE_PATH)
 		if err != OK:
 			get_tree().reload_current_scene()
+
+## 失败结算「返回上一存档点」：回到 level-2 的走廊，清空本关临时数据
+func _on_checkpoint_pressed() -> void:
+	GameState.level = maxi(1, int(GameState.level) - 2)
+	GameState.level_score = 0
+	GameState.level_coins_gained = 0
+	GameState.pending_items.clear()
+	GameState.bought_items_this_room.clear()
+	GameState.slot_bonus_count = 0
+	GameState.mark_checkpoint(FateConfig.CHECKPOINT_CORRIDOR)
+	GameState.save_game()
+	Audio.play_bgm("menu")
+	var err := get_tree().change_scene_to_file(CORRIDOR_SCENE_PATH)
+	if err != OK:
+		_goto_menu()
 
 func _on_menu_pressed() -> void:
 	_goto_menu()
@@ -779,7 +887,8 @@ func _on_exit_pressed() -> void:
 # ================= 回主菜单 =================
 
 func _goto_menu() -> void:
-	GameState.reset_to_title()
+	# v1.4：返回标题不结束本局（保留 run_active 供「继续试炼」续关），仅保存
+	GameState.save_game()
 	Audio.play_bgm("menu")
 	if ResourceLoader.exists(MENU_SCENE_PATH):
 		var err := get_tree().change_scene_to_file(MENU_SCENE_PATH)
@@ -832,5 +941,5 @@ func _on_balls_changed(_balls_left: int, _balls_total: int) -> void:
 func _on_items_changed() -> void:
 	_refresh_hud()
 
-func _on_library_changed(_normal: int, _advanced: int) -> void:
+func _on_library_changed(_normal: int, _advanced: int, _high: int) -> void:
 	_refresh_hud()

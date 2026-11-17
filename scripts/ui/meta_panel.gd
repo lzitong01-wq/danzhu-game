@@ -16,6 +16,7 @@ var _built := false
 var _panel: PanelContainer = null
 var _ball_normal_label: Label = null
 var _ball_advanced_label: Label = null
+var _ball_high_label: Label = null
 var _ball_normal_value: Label = null
 var _ball_advanced_value: Label = null
 var _normal_plus: Button = null
@@ -138,19 +139,39 @@ func _build_balls_section() -> PanelContainer:
 
 	box.add_child(_make_ball_row(false))
 	box.add_child(_make_ball_row(true))
+	box.add_child(_make_high_ball_row())
 	return panel
+
+
+func _make_high_ball_row() -> Control:
+	var row := UI.hbox(10)
+	row.add_child(UI.ball_icon_type(FateConfig.BALL_TYPE_SOURCE, 34.0))
+	var name_label := UI.label("命源弹珠", 16, FateConfig.COLOR_GOLD)
+	name_label.custom_minimum_size = Vector2(78.0, 0.0)
+	row.add_child(name_label)
+	_ball_high_label = UI.label("拥有 0", 13, FateConfig.COLOR_TEXT_DIM)
+	row.add_child(_ball_high_label)
+	var fill := Control.new()
+	fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(fill)
+	row.add_child(UI.label("结算时折算为命核珠带入", 11,
+			FateConfig.COLOR_TEXT_DIM))
+	return row
 
 
 func _make_ball_row(advanced: bool) -> Control:
 	var row := UI.hbox(10)
-	row.add_child(UI.ball_icon(advanced, 34.0))
+	row.add_child(UI.ball_icon_type(
+			FateConfig.BALL_TYPE_CORE if advanced else FateConfig.BALL_TYPE_FATE,
+			34.0))
 
 	var name_label: Label = null
 	if advanced:
-		name_label = UI.label("进阶弹珠", 16, FateConfig.COLOR_GOLD)
+		name_label = UI.label("命核弹珠", 16, FateConfig.COLOR_GOLD)
 		_ball_advanced_label = UI.label("", 13, FateConfig.COLOR_TEXT_DIM)
 	else:
-		name_label = UI.label("普通弹珠", 16, FateConfig.COLOR_TEXT)
+		name_label = UI.label("命运弹珠", 16, FateConfig.COLOR_TEXT)
 		_ball_normal_label = UI.label("", 13, FateConfig.COLOR_TEXT_DIM)
 	name_label.custom_minimum_size = Vector2(78.0, 0.0)
 	row.add_child(name_label)
@@ -329,6 +350,8 @@ func refresh() -> void:
 	var total_cards := _gs.meta_cards.size()
 	_ball_normal_label.text = "拥有 %d" % _gs.meta_balls_normal
 	_ball_advanced_label.text = "拥有 %d" % _gs.meta_balls_advanced
+	if _ball_high_label != null:
+		_ball_high_label.text = "拥有 %d" % _meta_high_count()
 	_ball_normal_value.text = "已选 %d" % _gs.selected_balls_normal
 	_ball_advanced_value.text = "已选 %d" % _gs.selected_balls_advanced
 	_ball_total_label.text = "已选弹珠 %d / %d" % [
@@ -369,6 +392,17 @@ func _rebuild_cards(total_cards: int) -> void:
 		card.add_theme_stylebox_override("panel",
 				_card_style(selected_count > 0))
 		_cards_row.add_child(card)
+
+
+## GameState 当前没有 meta_balls_high（命源珠结算时折算进 meta_balls_advanced），
+## 这里做动态兼容：若后续新增该字段则自动显示真实数量。
+func _meta_high_count() -> int:
+	if _gs == null:
+		return 0
+	for prop in _gs.get_property_list():
+		if String(prop.get("name", "")) == "meta_balls_high":
+			return int(_gs.get("meta_balls_high"))
+	return 0
 
 
 func _on_ball_plus(advanced: bool, delta: int) -> void:

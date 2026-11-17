@@ -3,9 +3,7 @@ extends SceneTree
 ## 用法： godot --headless --path <proj> --script res://tools/qa_audio.gd
 
 const BGM := [
-	"res://assets/audio/bgm/bgm_menu.ogg",
-	"res://assets/audio/bgm/bgm_battle.ogg",
-	"res://assets/audio/bgm/bgm_shop.ogg",
+	"res://assets/audio/bgm/bgm_main.ogg",
 	"res://assets/audio/bgm/bgm_victory.ogg",
 	"res://assets/audio/bgm/bgm_defeat.ogg",
 ]
@@ -23,6 +21,9 @@ const SFX := [
 	"res://assets/audio/sfx/sfx_crack.wav",
 	"res://assets/audio/sfx/sfx_win.wav",
 	"res://assets/audio/sfx/sfx_lose.wav",
+	"res://assets/audio/sfx/sfx_success.wav",
+	"res://assets/audio/sfx/sfx_synth_fail.wav",
+	"res://assets/audio/sfx/sfx_door.wav",
 ]
 
 func _init() -> void:

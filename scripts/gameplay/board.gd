@@ -156,8 +156,9 @@ func _build_pegs() -> void:
 				area.position.y + (float(row) + 0.5) * cell.y)
 			pos += Vector2(randf_range(-FateConfig.PEG_JITTER, FateConfig.PEG_JITTER),
 				randf_range(-FateConfig.PEG_JITTER, FateConfig.PEG_JITTER))
-			# 限制在立柱区内：右侧要给轨道墙留出厚度，避免立柱嵌进墙里
-			var max_x := minf(area.end.x - FateConfig.PEG_RADIUS, FateConfig.RAIL_LEFT - 12.0 - FateConfig.PEG_RADIUS)
+			# 右侧安全通道：立柱中心必须 ≤ RAIL_LEFT - PEG_RIGHT_GAP，
+			# 再扣掉轨道墙厚度与柱半径，保证最右柱与墙之间至少留出 PEG_RIGHT_GAP 的空隙（球可正常下落）
+			var max_x := FateConfig.RAIL_LEFT - 12.0 - FateConfig.PEG_RIGHT_GAP - FateConfig.PEG_RADIUS
 			pos.x = clampf(pos.x, area.position.x + FateConfig.PEG_RADIUS, max_x)
 			var peg_type := _roll_peg_type()
 			types.append(peg_type)
@@ -166,29 +167,76 @@ func _build_pegs() -> void:
 			peg.position = pos
 			add_child(peg)
 			pegs.append(peg)
-	# 绿色立柱相邻（横/竖/斜 8 邻接）：记录辉光连线 + 生成真实线段碰撞体
+	_build_green_links(types)
+
+## 绿色连线 v1.4：只允许横/竖相邻，每颗绿柱最多 2 条；
+## 先生成「连线组」（2~4 颗成行/成列），组与组之间不重叠，避免蛛网状乱连。
+func _build_green_links(types: Array) -> void:
+	links.clear()
+	var green_set := {}
 	for row in FateConfig.PEG_ROWS:
 		for col in FateConfig.PEG_COLS:
 			var idx: int = row * FateConfig.PEG_COLS + col
-			if int(types[idx]) != FateConfig.PEG_TYPE_GREEN:
+			if int(types[idx]) == FateConfig.PEG_TYPE_GREEN:
+				green_set[idx] = true
+	if green_set.is_empty():
+		return
+	var available: Array = green_set.keys()
+	var degrees := {}
+	var target_groups := randi_range(2, 3)
+	var groups_made := 0
+	var attempts := 0
+	while groups_made < target_groups and attempts < 40 and not available.is_empty():
+		attempts += 1
+		var start: int = int(available[randi() % available.size()])
+		var dirs: Array = [Vector2i(1, 0), Vector2i(0, 1)]
+		dirs.shuffle()
+		var made_group := false
+		for dir in dirs:
+			var run: Array = [start]
+			var cur := start
+			var max_len := randi_range(2, 4)
+			while run.size() < max_len:
+				var row: int = cur / FateConfig.PEG_COLS
+				var col: int = cur % FateConfig.PEG_COLS
+				var nr: int = row + (dir as Vector2i).y
+				var nc: int = col + (dir as Vector2i).x
+				if nr < 0 or nr >= FateConfig.PEG_ROWS or nc < 0 or nc >= FateConfig.PEG_COLS:
+					break
+				var nidx: int = nr * FateConfig.PEG_COLS + nc
+				if not green_set.has(nidx) or not available.has(nidx):
+					break
+				run.append(nidx)
+				cur = nidx
+			if run.size() < 2:
 				continue
-			for dr in range(-1, 2):
-				for dc in range(-1, 2):
-					if dr == 0 and dc == 0:
-						continue
-					var nr: int = row + dr
-					var nc: int = col + dc
-					if nr < 0 or nr >= FateConfig.PEG_ROWS or nc < 0 or nc >= FateConfig.PEG_COLS:
-						continue
-					var nidx: int = nr * FateConfig.PEG_COLS + nc
-					if nidx <= idx:
-						continue
-					if int(types[nidx]) != FateConfig.PEG_TYPE_GREEN:
-						continue
-					var pa: Vector2 = pegs[idx].position
-					var pb: Vector2 = pegs[nidx].position
-					links.append([pa, pb])
-					_add_link_segment(pa, pb)
+			# 每颗柱最多 2 条连线
+			var ok := true
+			for i in run.size() - 1:
+				if int(degrees.get(run[i], 0)) >= FateConfig.GREEN_LINK_MAX_PER_PEG:
+					ok = false
+					break
+				if int(degrees.get(run[i + 1], 0)) >= FateConfig.GREEN_LINK_MAX_PER_PEG:
+					ok = false
+					break
+			if not ok:
+				continue
+			for i in run.size() - 1:
+				var a: int = int(run[i])
+				var b: int = int(run[i + 1])
+				var pa: Vector2 = pegs[a].position
+				var pb: Vector2 = pegs[b].position
+				links.append([pa, pb])
+				_add_link_segment(pa, pb)
+				degrees[a] = int(degrees.get(a, 0)) + 1
+				degrees[b] = int(degrees.get(b, 0)) + 1
+			for idx in run:
+				available.erase(idx)
+			groups_made += 1
+			made_group = true
+			break
+		if not made_group:
+			available.erase(start)
 
 ## 绿色连线：StaticBody2D + SegmentShape2D，弹珠撞线会被再次反弹
 func _add_link_segment(a: Vector2, b: Vector2) -> void:
@@ -204,15 +252,21 @@ func _add_link_segment(a: Vector2, b: Vector2) -> void:
 	body.add_child(collision)
 	add_child(body)
 
-## 按权重抽取立柱类型；第 3 关普通柱消失，其余权重重新归一化
+## 权重抽取立柱类型；支持裂隙侵蚀（绿柱权重+20）与命源再现（删普通/黑柱）
 func _roll_peg_type() -> int:
-	var weights := FateConfig.PEG_WEIGHTS
-	var allowed: Array = []
+	var weights: Array = []
+	for w in FateConfig.PEG_WEIGHTS:
+		weights.append(int(w))
+	# 裂隙侵蚀：绿色立柱权重 +20
+	weights[FateConfig.PEG_TYPE_GREEN] = int(weights[FateConfig.PEG_TYPE_GREEN]) + GameState.get_green_weight_bonus()
+	# 命源再现：删除普通与负面（黑色）立柱
 	if GameState.is_normal_pegs_removed():
-		for i in range(1, weights.size()):
-			allowed.append(i)
-	else:
-		for i in weights.size():
+		weights[FateConfig.PEG_TYPE_NORMAL] = 0
+	if GameState.is_negative_pegs_removed():
+		weights[FateConfig.PEG_TYPE_BLACK] = 0
+	var allowed: Array = []
+	for i in weights.size():
+		if int(weights[i]) > 0:
 			allowed.append(i)
 	var total := 0
 	for i in allowed:

@@ -1,9 +1,10 @@
 extends Control
 ## 结算兜底版本：仅当 res://scenes/ui/result.tscn 缺失或加载失败时使用。
-## 接口与真实结算一致：show_result(victory, summary) + retry_pressed / menu_pressed。
+## 接口与真实结算一致：show_result(victory, summary) + retry_pressed / menu_pressed / checkpoint_pressed。
 
 signal retry_pressed
 signal menu_pressed
+signal checkpoint_pressed
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -52,12 +53,13 @@ func show_result(victory: bool, summary: Dictionary) -> void:
 	var shards := int(summary.get("shards", 0))
 	var best := int(summary.get("best", 0))
 	var is_new_best := bool(summary.get("is_new_best", false))
-	var body_text := "本局总分：%d\n命运碎片：+%d\n最高分：%d%s" % [
-		total,
-		shards,
-		best,
-		"\n※ 新纪录！" if is_new_best else "",
-	]
+	var level_score := int(summary.get("level_score", 0))
+	var body_text := ""
+	if victory:
+		body_text = "本局总分：%d\n命运碎片：+%d\n最高分：%d%s" % [
+			total, shards, best, "\n※ 新纪录！" if is_new_best else ""]
+	else:
+		body_text = "关卡得分：%d        本局总分：%d        获得命运碎片：%d" % [level_score, total, shards]
 	var body := Label.new()
 	body.text = body_text
 	body.position = Vector2(340.0, 280.0)
@@ -67,16 +69,37 @@ func show_result(victory: bool, summary: Dictionary) -> void:
 	body.add_theme_color_override("font_color", FateConfig.COLOR_TEXT)
 	body.add_theme_constant_override("line_spacing", 12)
 	add_child(body)
+	# v1.4：失败固定文案（summary.story）
+	var story := String(summary.get("story", ""))
+	if story != "":
+		var story_label := Label.new()
+		story_label.text = story
+		story_label.position = Vector2(200.0, 440.0)
+		story_label.size = Vector2(880.0, 50.0)
+		story_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		story_label.add_theme_font_size_override("font_size", 19)
+		story_label.add_theme_color_override("font_color", FateConfig.COLOR_TEXT_DIM)
+		add_child(story_label)
 	var retry := Button.new()
 	retry.text = "再来一局" if victory else "重试本关"
-	retry.position = Vector2(400.0, 520.0)
+	retry.position = Vector2(330.0, 520.0)
 	retry.size = Vector2(200.0, 68.0)
 	retry.add_theme_font_size_override("font_size", 26)
 	retry.pressed.connect(_on_retry_pressed)
 	add_child(retry)
+	if not victory:
+		var checkpoint := Button.new()
+		checkpoint.text = "返回上一存档点"
+		checkpoint.position = Vector2(550.0, 520.0)
+		checkpoint.size = Vector2(240.0, 68.0)
+		checkpoint.add_theme_font_size_override("font_size", 22)
+		checkpoint.disabled = int(summary.get("level", 1)) <= 2
+		checkpoint.modulate.a = 0.45 if checkpoint.disabled else 1.0
+		checkpoint.pressed.connect(_on_checkpoint_pressed)
+		add_child(checkpoint)
 	var menu := Button.new()
 	menu.text = "返回标题"
-	menu.position = Vector2(680.0, 520.0)
+	menu.position = Vector2(810.0, 520.0)
 	menu.size = Vector2(200.0, 68.0)
 	menu.add_theme_font_size_override("font_size", 26)
 	menu.pressed.connect(_on_menu_pressed)
@@ -85,6 +108,10 @@ func show_result(victory: bool, summary: Dictionary) -> void:
 func _on_retry_pressed() -> void:
 	Audio.play_sfx("click")
 	retry_pressed.emit()
+
+func _on_checkpoint_pressed() -> void:
+	Audio.play_sfx("click")
+	checkpoint_pressed.emit()
 
 func _on_menu_pressed() -> void:
 	Audio.play_sfx("click")

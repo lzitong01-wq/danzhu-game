@@ -1,8 +1,9 @@
 extends Node
 ## 音频管理器（自动加载名 `Audio`）。由 audio-dev 实现。
 ##
-## - BGM：双 AudioStreamPlayer 交叉淡入淡出；menu / battle / shop 循环播放，
-##   victory / defeat 只播放一次（不循环，结尾自带淡出）。
+## - BGM：双 AudioStreamPlayer 交叉淡入淡出。v1.6 起主菜单 / 回廊 / 关卡共用
+##   一首 bgm_main（40~60s 无缝循环）；`play_bgm("menu"/"battle"/"shop")` 统一
+##   映射到它（旧键保留，调用方无需修改）。victory / defeat 仍是单次短曲。
 ## - SFX：8 路播放器池，支持音量偏移与音高变化（便于撞柱音随机化）。
 ## - 资源缺失时静默降级，绝不抛错；同一首 BGM 重复请求不会重启。
 ## - 音频文件由 tools/gen_audio.py 程序化合成：
@@ -10,12 +11,16 @@ extends Node
 ##   assets/audio/sfx/sfx_*.wav（44.1kHz 单声道 16bit）
 
 const BGM_PATHS := {
-	"menu": "res://assets/audio/bgm/bgm_menu.ogg",
-	"battle": "res://assets/audio/bgm/bgm_battle.ogg",
-	"shop": "res://assets/audio/bgm/bgm_shop.ogg",
+	"main": "res://assets/audio/bgm/bgm_main.ogg",
+	# 旧键保留并指向同一首，避免遗留调用/调试路径找不到资源。
+	"menu": "res://assets/audio/bgm/bgm_main.ogg",
+	"battle": "res://assets/audio/bgm/bgm_main.ogg",
+	"shop": "res://assets/audio/bgm/bgm_main.ogg",
 	"victory": "res://assets/audio/bgm/bgm_victory.ogg",
 	"defeat": "res://assets/audio/bgm/bgm_defeat.ogg",
 }
+## v1.6：主菜单 / 回廊 / 关卡内统一用 bgm_main。
+const BGM_ALIAS := {"menu": "main", "battle": "main", "shop": "main"}
 const SFX_PATHS := {
 	"launch": "res://assets/audio/sfx/sfx_launch.wav",
 	"peg": "res://assets/audio/sfx/sfx_peg.wav",
@@ -30,10 +35,14 @@ const SFX_PATHS := {
 	"crack": "res://assets/audio/sfx/sfx_crack.wav",
 	"win": "res://assets/audio/sfx/sfx_win.wav",
 	"lose": "res://assets/audio/sfx/sfx_lose.wav",
+	# v1.6 按《基础策划案(3)》新增，旧键全部保留。
+	"success": "res://assets/audio/sfx/sfx_success.wav",
+	"synth_fail": "res://assets/audio/sfx/sfx_synth_fail.wav",
+	"door": "res://assets/audio/sfx/sfx_door.wav",
 }
 
-## 只有这三首循环；victory / defeat 是单次短曲。
-const LOOPING_BGM := ["menu", "battle", "shop"]
+## 只有 bgm_main 循环；victory / defeat 是单次短曲。
+const LOOPING_BGM := ["main"]
 const BGM_CROSSFADE := 0.8
 const BGM_FADE_OUT := 0.6
 const SILENCE_DB := -80.0
@@ -72,9 +81,11 @@ func _ready() -> void:
 	call_deferred("_warm_sfx_cache")
 
 
-## 播放 BGM。track: "menu" | "battle" | "shop" | "victory" | "defeat"。
+## 播放 BGM。track: "menu" | "battle" | "shop" | "victory" | "defeat"
+## （v1.6：menu / battle / shop 统一映射到 "main"，即 bgm_main）。
 func play_bgm(track: StringName) -> void:
 	var key := String(track)
+	key = String(BGM_ALIAS.get(key, key))
 	if key == _current_bgm and _bgm_players[_bgm_index].playing:
 		return
 	var path: String = BGM_PATHS.get(key, "")

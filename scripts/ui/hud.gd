@@ -16,6 +16,7 @@ signal exit_pressed
 signal equip_requested(item_id: String, screen_pos: Vector2)
 
 const UI := preload("res://scripts/ui/ui_theme.gd")
+const DetailPopup := preload("res://scripts/ui/detail_popup.gd")
 
 const LONG_PRESS_SEC := 0.25
 const LAMP_SIZE := 48.0
@@ -53,6 +54,7 @@ var _lamp_dots: Array[Panel] = []
 var _lamp_names: Array[Label] = []
 var _lamp_glow_normal: StyleBoxFlat = null
 var _lamp_glow_buffed: StyleBoxFlat = null
+var _lamp_glow_source: StyleBoxFlat = null
 var _lamp_adv_border: StyleBoxFlat = null
 var _lamp_hilite: StyleBoxFlat = null
 var _lamp_count: int = -1
@@ -65,18 +67,12 @@ var _item_sig: String = ""
 var _item_dirty := false
 var _bought_ids: Dictionary = {}
 
-# ---- ⑧ 弹珠库 ----
-var _lib_normal_holder: Control = null
-var _lib_advanced_holder: Control = null
-var _lib_normal_hl: Panel = null
-var _lib_advanced_hl: Panel = null
-var _lib_normal_count: Label = null
-var _lib_advanced_count: Label = null
-var _lib_merge_btn: Button = null
-var _lib_sel_label: Label = null
-var _lib_sel_dots: Array[Panel] = []
-var _selection_active := false
-var _selection_count := 0
+# ---- ⑧ 弹珠库（v1.4：三种琉璃珠 + 合成按钮）----
+var _lib_holders: Array[Control] = []
+var _lib_counts: Array[Label] = []
+var _lib_synth_core_btn: Button = null
+var _lib_synth_source_btn: Button = null
+var _lib_synth_hint: Label = null
 
 # ---- ⑥ ----
 var _close_btn: Button = null
@@ -105,6 +101,7 @@ var _pointer_view: Vector2 = Vector2.ZERO
 # ---- 卡牌详情（短按 ⑦ 待使用道具）----
 var _detail_root: Control = null
 var _detail_body: VBoxContainer = null
+var _detail_popup: Control = null
 
 
 func _ready() -> void:
@@ -123,6 +120,8 @@ func _ensure_built() -> void:
 
 	_lamp_glow_normal = _make_glow_style(false)
 	_lamp_glow_buffed = _make_glow_style(true)
+	_lamp_glow_source = _make_glow_style(false)
+	_lamp_glow_source.bg_color = Color(0.95, 0.98, 1.0, 0.22)
 	_lamp_adv_border = _make_border_style(FateConfig.COLOR_GOLD, 2)
 	_lamp_hilite = _make_border_style(FateConfig.COLOR_JADE, 2)
 
@@ -291,12 +290,18 @@ func popup_score(value: int, world_pos: Vector2) -> void:
 	tween.chain().tween_callback(lbl.queue_free)
 
 
-## 操作无效 / 金币不足的红色浮动提示。
+## 操作无效 / 命核碎片不足 / 合成失败的浮动提示（红色）。
 func flash_error(text: String) -> void:
+	_toast(text, FateConfig.COLOR_CRIMSON)
+
+
+## 通用浮动提示（合成成功用绿色等）。
+func _toast(text: String, color: Color) -> void:
 	if not _built:
 		_ensure_built()
 	if _flash_label == null:
 		return
+	_flash_label.add_theme_color_override("font_color", color)
 	_flash_label.text = text
 	_flash_label.visible = true
 	_flash_label.modulate.a = 1.0
@@ -305,11 +310,15 @@ func flash_error(text: String) -> void:
 	if _flash_tween != null and _flash_tween.is_valid():
 		_flash_tween.kill()
 	_flash_tween = create_tween()
-	_flash_tween.tween_interval(1.0)
+	_flash_tween.tween_interval(1.2)
 	_flash_tween.tween_property(_flash_label, "modulate:a", 0.0, 0.45)
 	_flash_tween.tween_callback(func() -> void:
 		_flash_label.visible = false
 	)
+
+
+func set_toast(text: String, success: bool = true) -> void:
+	_toast(text, FateConfig.COLOR_JADE if success else FateConfig.COLOR_CRIMSON)
 
 
 # ==================================================================
@@ -353,7 +362,7 @@ func _build_coin_cell() -> void:
 	row.add_child(UI.icon("coin", 38.0))
 	_coin_label = UI.label("9", 34, FateConfig.COLOR_GOLD)
 	row.add_child(_coin_label)
-	row.add_child(UI.label("金币", 13, FateConfig.COLOR_TEXT_DIM))
+	row.add_child(UI.label("命核碎片", 13, FateConfig.COLOR_TEXT_DIM))
 	var fill := Control.new()
 	fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -432,7 +441,8 @@ func _ensure_lamps() -> void:
 
 
 func _make_lamp() -> Control:
-	# 每盏灯 = 48×48 珠图标 + 底部卡名小字（红色）
+	# 每盏灯 = 48×48 珠图标 + 底部卡名小字（红色）；点击查看弹珠详情
+	var lamp_index := _lamp_icons.size()
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 0)
 	box.custom_minimum_size = Vector2(LAMP_SIZE, LAMP_SIZE + 12.0)
@@ -440,7 +450,9 @@ func _make_lamp() -> Control:
 
 	var lamp := Control.new()
 	lamp.custom_minimum_size = Vector2(LAMP_SIZE, LAMP_SIZE)
-	lamp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lamp.mouse_filter = Control.MOUSE_FILTER_STOP
+	lamp.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	lamp.gui_input.connect(_on_lamp_gui_input.bind(lamp_index))
 	box.add_child(lamp)
 
 	var glow := Panel.new()
@@ -502,6 +514,18 @@ func _make_lamp() -> Control:
 	return box
 
 
+func _on_lamp_gui_input(event: InputEvent, index: int) -> void:
+	if not (event is InputEventMouseButton) or _gs == null:
+		return
+	var mb := event as InputEventMouseButton
+	if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
+		return
+	if _drag_active:
+		return
+	var slot: Dictionary = _gs.get_ball_slot(index)
+	_show_ball_detail(clampi(int(slot.get("type", 0)), 0, 2))
+
+
 func _update_lamps() -> void:
 	if _gs == null:
 		return
@@ -512,19 +536,32 @@ func _update_lamps() -> void:
 	for i in _lamps.size():
 		var used := i < used_count
 		var slot: Dictionary = _gs.get_ball_slot(i)
-		var advanced := int(slot.get("type", 0)) == 1
+		var ball_type := clampi(int(slot.get("type", 0)), 0, 2)
 		var card := String(slot.get("card", ""))
 		var has_card := card != ""
+		var tex := UI.ball_texture(ball_type)
+		if tex != null:
+			_lamp_icons[i].texture = tex
 		var tint := Color(1.0, 0.42, 0.45) if has_card else Color(1.0, 1.0, 1.0)
 		if used:
 			tint = Color(0.55, 0.26, 0.30, 0.6) if has_card \
 					else Color(0.34, 0.32, 0.42, 0.5)
 		_lamp_icons[i].modulate = tint
-		_lamp_glows[i].visible = not used and has_card
-		_lamp_borders[i].visible = advanced
+		_lamp_glows[i].visible = not used and (has_card or ball_type == 2)
+		if _lamp_glows[i].visible:
+			if has_card:
+				_lamp_glows[i].add_theme_stylebox_override("panel",
+						_lamp_glow_buffed)
+			elif ball_type == 2:
+				_lamp_glows[i].add_theme_stylebox_override("panel",
+						_lamp_glow_source)
+			else:
+				_lamp_glows[i].add_theme_stylebox_override("panel",
+						_lamp_glow_normal)
+		_lamp_borders[i].visible = ball_type >= 1
 		_lamp_borders[i].modulate = Color(1.0, 1.0, 1.0,
 				1.0 if not used else 0.35)
-		_lamp_dots[i].visible = advanced
+		_lamp_dots[i].visible = ball_type >= 1
 		_lamp_dots[i].modulate = Color(1.0, 1.0, 1.0,
 				1.0 if not used else 0.35)
 		var name_label := _lamp_names[i]
@@ -537,12 +574,15 @@ func _update_lamps() -> void:
 func _short_card_name(card_id: String) -> String:
 	if card_id == "":
 		return ""
-	var full := card_id
-	if _gs != null:
-		full = _gs.get_card_name(card_id)
-	if full == "":
-		full = card_id
+	var full := _card_display_name(card_id)
 	return full.trim_suffix("卡")
+
+
+## 读 FateConfig.ITEMS 的名字（v1.4 起 GameState 不再提供 get_card_name）。
+func _card_display_name(card_id: String) -> String:
+	if FateConfig.ITEMS.has(card_id):
+		return String(FateConfig.ITEMS[card_id].get("name", card_id))
+	return card_id
 
 
 func _make_glow_style(buffed: bool) -> StyleBoxFlat:
@@ -667,7 +707,8 @@ func _make_offer_card(id: String) -> PanelContainer:
 	var cost := int(info.get("cost", 0))
 	var tag := String(info.get("tag", ""))
 	var kind := String(info.get("kind", "equipment"))
-	var owned_passive := kind == "passive" and _gs != null and _gs.has_item(id)
+	var owned_passive := kind == "passive" and _gs != null \
+			and _gs.run_items.has(id)
 	var can_buy := _gs != null and _gs.can_buy_item(id)
 
 	var card := PanelContainer.new()
@@ -683,7 +724,13 @@ func _make_offer_card(id: String) -> PanelContainer:
 	card.add_child(box)
 
 	var top := UI.hbox(6)
-	top.add_child(UI.item_icon(id, 30.0))
+	var icon_box := Control.new()
+	icon_box.custom_minimum_size = Vector2(30.0, 30.0)
+	icon_box.mouse_filter = Control.MOUSE_FILTER_STOP
+	icon_box.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	icon_box.gui_input.connect(_on_offer_icon_input.bind(id))
+	icon_box.add_child(UI.item_icon(id, 30.0))
+	top.add_child(icon_box)
 	var name_label := UI.label(item_name, 16, FateConfig.COLOR_GOLD)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(name_label)
@@ -702,13 +749,16 @@ func _make_offer_card(id: String) -> PanelContainer:
 	var price_row := UI.hbox(4)
 	price_row.add_child(UI.icon("coin", 15.0))
 	price_row.add_child(UI.label(str(cost), 14, FateConfig.COLOR_GOLD))
-	price_row.add_child(UI.label("金币", 10, FateConfig.COLOR_TEXT_DIM))
+	price_row.add_child(UI.label("命核碎片", 10, FateConfig.COLOR_TEXT_DIM))
 	box.add_child(price_row)
 
 	var buy_btn := UI.button("购买", 15, 48.0)
-	if _bought_ids.has(id):
-		buy_btn.text = "已购 ✓"
-	if owned_passive:
+	var bought_this_room := _gs != null and _gs.is_item_bought(id)
+	if bought_this_room:
+		buy_btn.text = "已购买"
+		buy_btn.disabled = true
+		buy_btn.modulate = Color(0.62, 0.62, 0.68)
+	elif owned_passive:
 		buy_btn.text = "已获得"
 		buy_btn.disabled = true
 	elif not can_buy:
@@ -716,6 +766,14 @@ func _make_offer_card(id: String) -> PanelContainer:
 	buy_btn.pressed.connect(_on_buy_offer.bind(id))
 	box.add_child(buy_btn)
 	return card
+
+
+func _on_offer_icon_input(event: InputEvent, id: String) -> void:
+	if not (event is InputEventMouseButton):
+		return
+	var mb := event as InputEventMouseButton
+	if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
+		_show_item_detail(id)
 
 
 func _kind_label(kind: String) -> String:
@@ -726,6 +784,8 @@ func _kind_label(kind: String) -> String:
 			return "拖到弹珠"
 		"passive":
 			return "立即生效"
+		"instant":
+			return "购买即生效"
 		"library":
 			return "进弹珠库"
 		_:
@@ -742,19 +802,13 @@ func _build_pending_row() -> HBoxContainer:
 		row.add_child(UI.label("（购买装备 / 增益卡后拖动到右侧立柱或弹珠灯）",
 				11, FateConfig.COLOR_TEXT_DIM))
 		return row
-	var counts: Dictionary = {}
-	var order: Array[String] = []
+	# v1.6：相同道具不堆叠，逐个图标显示
 	for id in pending:
-		if not counts.has(id):
-			counts[id] = 0
-			order.append(id)
-		counts[id] = int(counts[id]) + 1
-	for id in order:
-		row.add_child(_make_pending_icon(id, int(counts[id])))
+		row.add_child(_make_pending_icon(id))
 	return row
 
 
-func _make_pending_icon(id: String, count: int) -> Control:
+func _make_pending_icon(id: String) -> Control:
 	var holder := Control.new()
 	holder.custom_minimum_size = Vector2(54.0, 54.0)
 	holder.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -771,13 +825,6 @@ func _make_pending_icon(id: String, count: int) -> Control:
 	tex.position = Vector2(6.0, 6.0)
 	holder.add_child(tex)
 
-	if count > 1:
-		var badge := UI.label("×%d" % count, 11, FateConfig.COLOR_TEXT)
-		badge.position = Vector2(30.0, 36.0)
-		badge.size = Vector2(22.0, 16.0)
-		badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		holder.add_child(badge)
-
 	_attach_drag_source(holder, "pending", id)
 	return holder
 
@@ -785,17 +832,23 @@ func _make_pending_icon(id: String, count: int) -> Control:
 func _on_buy_offer(id: String) -> void:
 	if _gs == null:
 		return
+	if _gs.is_item_bought(id):
+		flash_error("本轮已经购买过这件道具了")
+		_item_sig = ""
+		_update_item_area()
+		return
 	if not _gs.can_buy_item(id):
 		var info: Dictionary = FateConfig.ITEMS.get(id, {})
-		if String(info.get("kind", "")) == "passive" and _gs.has_item(id):
+		if String(info.get("kind", "")) == "passive" \
+				and _gs.run_items.has(id):
 			flash_error("这件遗物已经生效了")
 		else:
-			flash_error("金币不足")
+			flash_error("命核碎片不足")
 		_item_sig = ""
 		_update_item_area()
 		return
 	if _gs.buy_item(id):
-		UI.play_sfx("buy")
+		UI.play_sfx("success")
 		_bought_ids[id] = true
 		_item_sig = ""
 		refresh()
@@ -818,7 +871,7 @@ func _build_library_area() -> void:
 	fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	header.add_child(fill)
-	header.add_child(UI.label("长按普通珠选择合成 · 拖珠子到弹珠灯替换", 11,
+	header.add_child(UI.label("拖珠子到弹珠灯替换 · 每关可合成一次", 11,
 			FateConfig.COLOR_TEXT_DIM))
 	var exit_btn := UI.button("返回标题", 12, 36.0)
 	exit_btn.custom_minimum_size = Vector2(96.0, 36.0)
@@ -826,166 +879,109 @@ func _build_library_area() -> void:
 	header.add_child(exit_btn)
 	root.add_child(header)
 
-	var body := UI.hbox(18)
+	var body := UI.hbox(14)
 	body.alignment = BoxContainer.ALIGNMENT_CENTER
 	root.add_child(body)
 
-	# 普通珠
-	var normal_box := UI.vbox(2)
-	normal_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	_lib_normal_holder = _make_library_holder("ball_normal", "library_normal")
-	_lib_normal_hl = _lib_normal_holder.get_meta("highlight")
-	normal_box.add_child(_lib_normal_holder)
-	_lib_normal_count = UI.label("普通 × 0", 14, FateConfig.COLOR_TEXT)
-	normal_box.add_child(_lib_normal_count)
-	body.add_child(normal_box)
-
-	# 进阶珠
-	var advanced_box := UI.vbox(2)
-	advanced_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	_lib_advanced_holder = _make_library_holder("ball_advanced", "library_advanced")
-	_lib_advanced_hl = _lib_advanced_holder.get_meta("highlight")
-	advanced_box.add_child(_lib_advanced_holder)
-	_lib_advanced_count = UI.label("进阶 × 0", 14, FateConfig.COLOR_GOLD)
-	advanced_box.add_child(_lib_advanced_count)
-	body.add_child(advanced_box)
+	_lib_holders.clear()
+	_lib_counts.clear()
+	var names := ["命运", "命核", "命源"]
+	var kinds := ["library_normal", "library_advanced", "library_high"]
+	for i in 3:
+		var box := UI.vbox(2)
+		box.alignment = BoxContainer.ALIGNMENT_CENTER
+		var holder := _make_library_holder(i, kinds[i])
+		_lib_holders.append(holder)
+		box.add_child(holder)
+		var count_label := UI.label("%s × 0" % names[i], 13,
+				FateConfig.COLOR_TEXT if i == 0 else FateConfig.COLOR_GOLD)
+		_lib_counts.append(count_label)
+		box.add_child(count_label)
+		body.add_child(box)
 
 	# 合成操作
-	var action := UI.vbox(3)
+	var action := UI.vbox(4)
 	action.alignment = BoxContainer.ALIGNMENT_CENTER
-	_lib_merge_btn = UI.button("合成进阶", 14, 44.0)
-	_lib_merge_btn.custom_minimum_size = Vector2(132.0, 44.0)
-	_lib_merge_btn.visible = false
-	_lib_merge_btn.pressed.connect(_on_merge_pressed)
-	action.add_child(_lib_merge_btn)
-	_lib_sel_label = UI.label("", 11, FateConfig.COLOR_JADE,
+	_lib_synth_core_btn = UI.button("合成命核 3命运·60%", 13, 44.0)
+	_lib_synth_core_btn.custom_minimum_size = Vector2(226.0, 44.0)
+	_lib_synth_core_btn.pressed.connect(_on_synth_pressed.bind("core"))
+	action.add_child(_lib_synth_core_btn)
+	_lib_synth_source_btn = UI.button("合成命源 3命核·40%", 13, 44.0)
+	_lib_synth_source_btn.custom_minimum_size = Vector2(226.0, 44.0)
+	_lib_synth_source_btn.pressed.connect(_on_synth_pressed.bind("source"))
+	action.add_child(_lib_synth_source_btn)
+	_lib_synth_hint = UI.label("", 10, FateConfig.COLOR_TEXT_DIM,
 			HORIZONTAL_ALIGNMENT_CENTER)
-	action.add_child(_lib_sel_label)
-	var dots := UI.hbox(5)
-	dots.alignment = BoxContainer.ALIGNMENT_CENTER
-	for i in 3:
-		var dot := Panel.new()
-		dot.custom_minimum_size = Vector2(12.0, 12.0)
-		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		dots.add_child(dot)
-		_lib_sel_dots.append(dot)
-	action.add_child(dots)
+	action.add_child(_lib_synth_hint)
 	body.add_child(action)
 
 
-func _make_library_holder(texture_name: String, drag_kind: String) -> Control:
+func _make_library_holder(ball_type: int, drag_kind: String) -> Control:
 	var holder := Control.new()
-	holder.custom_minimum_size = Vector2(76.0, 76.0)
+	holder.custom_minimum_size = Vector2(64.0, 64.0)
 	holder.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 
 	var bg := Panel.new()
-	bg.size = Vector2(76.0, 76.0)
+	bg.size = Vector2(64.0, 64.0)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bg.add_theme_stylebox_override("panel", UI.panel_style(
-			Color(0.17, 0.12, 0.27, 0.95), FateConfig.COLOR_PANEL_EDGE, 16, 1, false))
+			Color(0.17, 0.12, 0.27, 0.95), FateConfig.COLOR_PANEL_EDGE, 0, 1, false))
 	holder.add_child(bg)
 
 	var tex := TextureRect.new()
-	tex.texture = UI.load_texture("res://assets/art/%s.png" % texture_name)
+	tex.texture = UI.ball_texture(ball_type)
 	tex.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	tex.position = Vector2(6.0, 6.0)
-	tex.size = Vector2(64.0, 64.0)
+	tex.position = Vector2(5.0, 5.0)
+	tex.size = Vector2(54.0, 54.0)
 	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	holder.add_child(tex)
-
-	var highlight := Panel.new()
-	highlight.position = Vector2(-2.0, -2.0)
-	highlight.size = Vector2(80.0, 80.0)
-	highlight.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	highlight.add_theme_stylebox_override("panel", _make_border_style(
-			FateConfig.COLOR_GOLD, 2))
-	highlight.visible = false
-	holder.add_child(highlight)
-	holder.set_meta("highlight", highlight)
 
 	_attach_drag_source(holder, drag_kind, "")
 	return holder
 
 
 func _update_library() -> void:
-	if _gs == null or _lib_normal_count == null:
+	if _gs == null or _lib_counts.is_empty():
 		return
-	var normal: int = _gs.library_normal
-	var advanced: int = _gs.library_advanced
-	_lib_normal_count.text = "普通 × %d" % normal
-	_lib_advanced_count.text = "进阶 × %d" % advanced
-	_lib_normal_holder.modulate = Color(1.0, 1.0, 1.0) if normal > 0 \
-			else Color(0.55, 0.53, 0.62, 0.6)
-	_lib_advanced_holder.modulate = Color(1.0, 1.0, 1.0) if advanced > 0 \
-			else Color(0.55, 0.53, 0.62, 0.6)
-
-	if _selection_count > 3:
-		_selection_count = 3
-	if _selection_count > normal:
-		_selection_count = normal
-	if normal <= 0:
-		_selection_active = false
-		_selection_count = 0
-
-	_lib_normal_hl.visible = _selection_active and _selection_count > 0
-	_lib_merge_btn.visible = _selection_active
-	_lib_merge_btn.disabled = normal < 3 or _selection_count < 3
-	_lib_sel_label.text = "已选 %d / 3" % _selection_count if _selection_active \
-			else ""
-	for i in _lib_sel_dots.size():
-		var dot := _lib_sel_dots[i]
-		var style := StyleBoxFlat.new()
-		style.set_corner_radius_all(0)
-		style.set_border_width_all(1)
-		if _selection_active and i < _selection_count:
-			style.bg_color = FateConfig.COLOR_GOLD
-			style.border_color = Color(1.0, 0.95, 0.8, 0.9)
-		else:
-			style.bg_color = Color(0.10, 0.08, 0.15, 0.9)
-			style.border_color = Color(0.36, 0.31, 0.47, 0.8)
-		dot.add_theme_stylebox_override("panel", style)
+	var counts := [_gs.library_normal, _gs.library_advanced, _gs.library_high]
+	for i in _lib_holders.size():
+		var count := int(counts[i])
+		_lib_counts[i].text = ["命运 × %d", "命核 × %d", "命源 × %d"][i] % count
+		_lib_holders[i].modulate = Color(1.0, 1.0, 1.0) if count > 0 \
+				else Color(0.55, 0.53, 0.62, 0.6)
+	var used := bool(_gs.synth_used)
+	if _lib_synth_core_btn != null:
+		_lib_synth_core_btn.disabled = used or int(counts[0]) < 3
+	if _lib_synth_source_btn != null:
+		_lib_synth_source_btn.disabled = used or int(counts[1]) < 3
+	if _lib_synth_hint != null:
+		_lib_synth_hint.text = "本关已合成过（每关一次）" if used \
+				else "失败返还：3 命运珠 / 2 命核珠"
 
 
-func _on_merge_pressed() -> void:
+func _on_synth_pressed(kind: String) -> void:
 	if _gs == null:
 		return
-	if _gs.library_normal < 3:
-		flash_error("普通弹珠不足 3 颗")
-		return
-	if _gs.merge_library_balls():
-		UI.play_sfx("buy")
-		_reset_selection()
-		refresh()
+	var result: Dictionary
+	if kind == "core":
+		result = _gs.synthesize_core()
 	else:
-		flash_error("合成失败")
-
-
-func _reset_selection() -> void:
-	_selection_active = false
-	_selection_count = 0
-
-
-func _start_selection(count: int) -> void:
-	if _gs == null or _gs.library_normal <= 0:
-		return
-	_selection_active = true
-	_selection_count = clampi(count, 1, mini(3, _gs.library_normal))
-	UI.play_sfx("click")
-	_update_library()
-
-
-func _on_library_tapped(kind: String) -> void:
-	if kind != "library_normal" or _gs == null:
-		return
-	if _selection_active:
-		_selection_count = clampi(_selection_count + 1, 1,
-				mini(3, _gs.library_normal))
-		UI.play_sfx("click")
-		_update_library()
+		result = _gs.synthesize_source()
+	if bool(result.get("ok", false)):
+		var gained := "命核琉璃珠" if kind == "core" else "命源琉璃珠"
+		UI.play_sfx("success")
+		_toast("合成成功！获得 1 颗" + gained, FateConfig.COLOR_JADE)
 	else:
-		_start_selection(1)
+		UI.play_sfx("synth_fail")
+		var reason := String(result.get("reason", ""))
+		if reason != "":
+			_toast(reason, FateConfig.COLOR_CRIMSON)
+		else:
+			var refund := "3 颗命运琉璃珠" if kind == "core" else "2 颗命核琉璃珠"
+			_toast("合成失败，返还 " + refund, FateConfig.COLOR_CRIMSON)
+	refresh()
 
 
 # ==================================================================
@@ -1070,88 +1066,33 @@ func _build_drag_layer() -> void:
 # ==================================================================
 
 func _build_detail() -> void:
-	_detail_root = Control.new()
-	_detail_root.mouse_filter = Control.MOUSE_FILTER_STOP
-	UI.set_full_rect(_detail_root)
-	_detail_root.visible = false
-	add_child(_detail_root)
-
-	var dim := ColorRect.new()
-	dim.color = Color(FateConfig.COLOR_VOID.r, FateConfig.COLOR_VOID.g,
-			FateConfig.COLOR_VOID.b, 0.72)
-	dim.mouse_filter = Control.MOUSE_FILTER_STOP
-	UI.set_full_rect(dim)
-	dim.gui_input.connect(_on_detail_dim_input)
-	_detail_root.add_child(dim)
-
-	var panel := PanelContainer.new()
-	panel.anchor_left = 0.5
-	panel.anchor_top = 0.5
-	panel.anchor_right = 0.5
-	panel.anchor_bottom = 0.5
-	panel.offset_left = -290.0
-	panel.offset_top = -150.0
-	panel.offset_right = 290.0
-	panel.offset_bottom = 150.0
-	panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	panel.add_theme_stylebox_override("panel", UI.panel_style(
-			Color(0.08, 0.06, 0.14, 0.99), FateConfig.COLOR_GOLD, 0, 4))
-	_detail_root.add_child(panel)
-
-	_detail_body = UI.vbox(10)
-	panel.add_child(_detail_body)
+	_ensure_detail_popup()
 
 
-func _on_detail_dim_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
-			_hide_item_detail()
+func _ensure_detail_popup() -> Control:
+	if _detail_popup == null or not is_instance_valid(_detail_popup):
+		_detail_popup = DetailPopup.new()
+		add_child(_detail_popup)
+	return _detail_popup
+
+
+func _on_detail_dim_input(_event: InputEvent) -> void:
+	pass
 
 
 func _show_item_detail(item_id: String) -> void:
-	if _detail_root == null or not FateConfig.ITEMS.has(item_id):
+	if not FateConfig.ITEMS.has(item_id):
 		return
-	var info: Dictionary = FateConfig.ITEMS[item_id]
-	for child in _detail_body.get_children():
-		_detail_body.remove_child(child)
-		child.queue_free()
+	_ensure_detail_popup().call("open_item", item_id)
 
-	var top := UI.hbox(14)
-	top.add_child(UI.item_icon(item_id, 64.0))
-	var info_box := UI.vbox(2)
-	info_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	info_box.add_child(UI.label(String(info.get("name", item_id)), 28,
-			FateConfig.COLOR_GOLD))
-	info_box.add_child(UI.label("%s · %s" % [String(info.get("tag", "")),
-			_kind_label(String(info.get("kind", "equipment")))], 13,
-			FateConfig.COLOR_VIOLET))
-	top.add_child(info_box)
-	_detail_body.add_child(top)
 
-	var desc := UI.label(String(info.get("desc", "")), 16,
-			FateConfig.COLOR_TEXT, HORIZONTAL_ALIGNMENT_LEFT)
-	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc.custom_minimum_size = Vector2(0.0, 76.0)
-	_detail_body.add_child(desc)
-
-	var price_row := UI.hbox(8)
-	price_row.add_child(UI.icon("coin", 24.0))
-	price_row.add_child(UI.label("价格 %d 金币" % int(info.get("cost", 0)), 16,
-			FateConfig.COLOR_GOLD))
-	_detail_body.add_child(price_row)
-
-	_detail_body.add_child(UI.label("点击空白处关闭（长按可拖拽使用）", 11,
-			FateConfig.COLOR_TEXT_DIM, HORIZONTAL_ALIGNMENT_CENTER))
-	_detail_root.visible = true
-	_detail_root.modulate.a = 0.0
-	var tween := create_tween()
-	tween.tween_property(_detail_root, "modulate:a", 1.0, 0.12)
+func _show_ball_detail(ball_type: int) -> void:
+	_ensure_detail_popup().call("open_ball", ball_type)
 
 
 func _hide_item_detail() -> void:
-	if _detail_root != null:
-		_detail_root.visible = false
+	if _detail_popup != null and is_instance_valid(_detail_popup):
+		_detail_popup.visible = false
 
 
 # ==================================================================
@@ -1221,10 +1162,15 @@ func _start_drag() -> void:
 	if not _press_active:
 		return
 	# 弹珠库没有对应珠子时不允许拖动
-	if _press_kind == "library_normal" and (_gs == null or _gs.library_normal <= 0):
-		_clear_press()
-		return
-	if _press_kind == "library_advanced" and (_gs == null or _gs.library_advanced <= 0):
+	var have := true
+	match _press_kind:
+		"library_normal":
+			have = _gs != null and _gs.library_normal > 0
+		"library_advanced":
+			have = _gs != null and _gs.library_advanced > 0
+		"library_high":
+			have = _gs != null and _gs.library_high > 0
+	if not have:
 		_clear_press()
 		return
 	_drag_active = true
@@ -1239,25 +1185,22 @@ func _start_drag() -> void:
 	_drag_layer.add_child(_ghost)
 	if _press_kind.begins_with("library_"):
 		_set_lamp_highlight(true)
-	if _press_kind == "library_normal" and _gs != null and _gs.library_normal > 0:
-		_selection_active = true
-		_selection_count = clampi(maxi(_selection_count, 1), 1,
-				mini(3, _gs.library_normal))
-		_update_library()
 	_update_ghost()
 
 
 func _drag_texture() -> Texture2D:
 	match _press_kind:
 		"library_normal":
-			return UI.load_texture("res://assets/art/ball_normal.png")
+			return UI.ball_texture(FateConfig.BALL_TYPE_FATE)
 		"library_advanced":
-			return UI.load_texture("res://assets/art/ball_advanced.png")
+			return UI.ball_texture(FateConfig.BALL_TYPE_CORE)
+		"library_high":
+			return UI.ball_texture(FateConfig.BALL_TYPE_SOURCE)
 		_:
 			var tex := UI.icon_texture(_press_item)
 			if tex != null:
 				return tex
-			return UI.load_texture("res://assets/art/ball_normal.png")
+			return UI.ball_texture(FateConfig.BALL_TYPE_FATE)
 
 
 func _update_ghost() -> void:
@@ -1271,10 +1214,16 @@ func _finish_tap() -> void:
 	var kind := _press_kind
 	var item_id := _press_item
 	_clear_press()
-	if kind == "library_normal":
-		_on_library_tapped(kind)
-	elif kind == "pending" and item_id != "":
-		_show_item_detail(item_id)
+	match kind:
+		"pending":
+			if item_id != "":
+				_show_item_detail(item_id)
+		"library_normal":
+			_show_ball_detail(FateConfig.BALL_TYPE_FATE)
+		"library_advanced":
+			_show_ball_detail(FateConfig.BALL_TYPE_CORE)
+		"library_high":
+			_show_ball_detail(FateConfig.BALL_TYPE_SOURCE)
 
 
 func _finish_drag(viewport_pos: Vector2) -> void:
@@ -1285,13 +1234,14 @@ func _finish_drag(viewport_pos: Vector2) -> void:
 		"pending":
 			success = _use_pending_item(item_id, viewport_pos)
 		"library_normal":
-			success = _use_library_ball(false, viewport_pos)
+			success = _use_library_ball(FateConfig.BALL_TYPE_FATE, viewport_pos)
 		"library_advanced":
-			success = _use_library_ball(true, viewport_pos)
+			success = _use_library_ball(FateConfig.BALL_TYPE_CORE, viewport_pos)
+		"library_high":
+			success = _use_library_ball(FateConfig.BALL_TYPE_SOURCE, viewport_pos)
 		_:
 			pass
 	if success:
-		_reset_selection()
 		refresh()
 	_end_drag(not success)
 
@@ -1330,7 +1280,7 @@ func _use_pending_item(id: String, viewport_pos: Vector2) -> bool:
 	return false
 
 
-func _use_library_ball(advanced: bool, viewport_pos: Vector2) -> bool:
+func _use_library_ball(ball_type: int, viewport_pos: Vector2) -> bool:
 	if _gs == null:
 		return false
 	var index := _lamp_at(viewport_pos)
@@ -1340,16 +1290,23 @@ func _use_library_ball(advanced: bool, viewport_pos: Vector2) -> bool:
 	if _is_lamp_used(index):
 		flash_error("这颗弹珠已经发射过了")
 		return false
-	if advanced and _gs.library_advanced <= 0:
-		flash_error("弹珠库里没有进阶珠")
+	match ball_type:
+		FateConfig.BALL_TYPE_CORE:
+			if _gs.library_advanced <= 0:
+				flash_error("弹珠库里没有命核琉璃珠")
+				return false
+		FateConfig.BALL_TYPE_SOURCE:
+			if _gs.library_high <= 0:
+				flash_error("弹珠库里没有命源琉璃珠")
+				return false
+		_:
+			if _gs.library_normal <= 0:
+				flash_error("弹珠库里没有命运琉璃珠")
+				return false
+	if _gs.get_ball_card(index) != "":
+		flash_error("这颗弹珠已绑定卡牌，无法替换")
 		return false
-	if not advanced and _gs.library_normal <= 0:
-		flash_error("弹珠库里没有普通珠")
-		return false
-	if bool(_gs.get_ball_slot(index).get("buffed", false)):
-		flash_error("这颗弹珠已被增益，无法替换")
-		return false
-	if _gs.replace_ball_slot(index, advanced):
+	if _gs.replace_ball_slot_type(index, ball_type):
 		UI.play_sfx("slot")
 		return true
 	flash_error("替换失败")
@@ -1489,7 +1446,8 @@ func _on_level_started(_level: int, _target: int, _event: Dictionary) -> void:
 	refresh()
 
 
-func _on_library_changed(_normal_count: int, _advanced_count: int) -> void:
+func _on_library_changed(_normal_count: int, _advanced_count: int,
+		_high_count: int) -> void:
 	refresh()
 
 

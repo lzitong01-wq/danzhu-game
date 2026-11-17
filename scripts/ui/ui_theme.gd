@@ -283,18 +283,32 @@ static func icon_texture(icon_name: String) -> Texture2D:
 	return load_texture(ICON_DIR + icon_name + ".png")
 
 
+## 弹珠贴图（v1.4：type 0 命运 / 1 命核 / 2 命源）。
+static func ball_texture(ball_type: int) -> Texture2D:
+	var file := "ball_normal.png"
+	match clampi(ball_type, 0, 2):
+		1:
+			file = "ball_advanced.png"
+		2:
+			file = "ball_source.png"
+	return load_texture("res://assets/art/" + file)
+
+
 ## 弹珠图标（弹珠图在 assets/art 根目录，不在 icons/ 下）。
-static func ball_icon(advanced: bool, pixel_size: float = 32.0) -> TextureRect:
-	var path := "res://assets/art/ball_advanced.png" if advanced \
-			else "res://assets/art/ball_normal.png"
+static func ball_icon_type(ball_type: int, pixel_size: float = 32.0) -> TextureRect:
 	var tr := TextureRect.new()
-	tr.texture = load_texture(path)
+	tr.texture = ball_texture(ball_type)
 	tr.custom_minimum_size = Vector2(pixel_size, pixel_size)
 	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return tr
+
+
+## 兼容旧两阶接口。
+static func ball_icon(advanced: bool, pixel_size: float = 32.0) -> TextureRect:
+	return ball_icon_type(1 if advanced else 0, pixel_size)
 
 
 static func icon(icon_name: String, pixel_size: float = 28.0) -> TextureRect:

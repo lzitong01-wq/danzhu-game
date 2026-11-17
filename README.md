@@ -2,13 +2,15 @@
 
 [![Godot](https://img.shields.io/badge/Godot-4.6.3-478cbf?logo=godot-engine&logoColor=white)](https://godotengine.org/)
 [![Platform](https://img.shields.io/badge/platform-Android-3ddc84?logo=android&logoColor=white)](#)
-[![Version](https://img.shields.io/badge/version-1.3.0-orange)](CHANGELOG.md)
-[![Download](https://img.shields.io/badge/download-APK%2045.8MB-2ea44f?logo=android&logoColor=white)](https://github.com/lzitong01-wq/danzhu-game/releases/latest)
+[![Version](https://img.shields.io/badge/source-1.8.0-orange)](CHANGELOG.md)
+[![APK](https://img.shields.io/badge/APK-v1.12.0-2ea44f?logo=android&logoColor=white)](https://github.com/lzitong01-wq/danzhu-game/releases/latest)
 
 > 手机端 **横屏像素风** 弹珠肉鸽（Pachinko × Roguelike）游戏。
 > 把命运琉璃珠射进弹珠台，看它撞在哪里、落进哪个洞——那就是你的命。
 
-![游戏截图](docs/screenshots_v13/v13_contact_sheet.png)
+![游戏截图](docs/screenshots_v18/v18_contact_sheet.png)
+
+> **版本说明**：仓库内的 Godot 源码为 **v1.8.0**；可下载安装包以最新 Release 为准，当前为 **v1.12.0**（ APK 比源码新，源码更新有滞后）。
 
 ---
 
@@ -104,7 +106,9 @@ powershell -ExecutionPolicy Bypass -File tools/build_apk.ps1
 
 ### 安装试玩
 
-**[→ 下载 APK（v1.3.0，45.8 MB）](https://github.com/lzitong01-wq/danzhu-game/releases/latest)**
+**[→ 下载 APK（最新版 v1.12.0，43.9 MB）](https://github.com/lzitong01-wq/danzhu-game/releases/latest)**
+
+> 安装包始终以 Release 里的最新 APK 为准。源码版本（当前 v1.8.0）可能滞后于 APK，以实际下载的包为准。
 
 APK 作为 Release 附件发布，不在仓库内——构建产物入库会让仓库永久膨胀，且每次重新导出都会产生新的二进制差异。
 
@@ -174,12 +178,12 @@ build/                      # 构建日志与导出说明（APK 本身不入库�
 | 文件 | 内容 |
 | --- | --- |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | 世界观、核心玩法、关卡数值、肉鸽元素设计 |
-| [`docs/README.md`](docs/README.md) | v1.3 完整验收说明：改动清单、P1 布局坐标表、操作、自测结果 |
-| [`docs/CONTRACT.md`](docs/CONTRACT.md) ~ [`CONTRACT_V4.md`](docs/CONTRACT_V4.md) | 各版本开发契约（需求 → 实现的对应关系） |
+| [`docs/README.md`](docs/README.md) | v1.8 完整验收说明：改动清单、布局坐标表、操作、自测结果 |
+| [`docs/CONTRACT.md`](docs/CONTRACT.md) ~ [`CONTRACT_V8.md`](docs/CONTRACT_V8.md) | 各版本开发契约（需求 → 实现的对应关系） |
 | [`build/RELEASE_EXPORT.md`](build/RELEASE_EXPORT.md) | Android 导出与签名流程 |
-| [`docs/screenshots_v13/`](docs/screenshots_v13/) | v1.3 实机截图（12 张 + 联系表） |
+| [`docs/screenshots_v18/`](docs/screenshots_v18/) | v1.8 实机截图（含联系表） |
 
-历史版本截图在 `docs/screenshots/`、`screenshots_v11/`、`screenshots_v12/`。
+历史版本截图在 `docs/screenshots/`、`screenshots_v11/` ~ `screenshots_v17/`。
 
 ---
 

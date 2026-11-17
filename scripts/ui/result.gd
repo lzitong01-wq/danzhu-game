@@ -9,16 +9,18 @@ extends Control
 
 signal retry_pressed
 signal menu_pressed
+signal checkpoint_pressed
 
 const UI := preload("res://scripts/ui/ui_theme.gd")
 
-const PANEL_SIZE := Vector2(800.0, 600.0)
+const PANEL_SIZE := Vector2(820.0, 660.0)
 
 var _gs := UI.game_state()
 var _panel: PanelContainer = null
 var _title: Label = null
 var _subtitle: Label = null
 var _level_label: Label = null
+var _story_label: Label = null
 var _score_value: Label = null
 var _shards_value: Label = null
 var _best_value: Label = null
@@ -26,6 +28,10 @@ var _carried_box: HBoxContainer = null
 var _badge: Label = null
 var _badge_tween: Tween = null
 var _retry_btn: Button = null
+var _menu_btn: Button = null
+var _stat_headings: Array[Label] = []
+var _fail_level: int = 1
+var _is_victory := false
 var _built := false
 
 
@@ -94,6 +100,14 @@ func _build_ui() -> void:
 			HORIZONTAL_ALIGNMENT_CENTER)
 	root_box.add_child(_level_label)
 
+	# 失败固定文案（策划案 11 条）
+	_story_label = UI.label("", 14, FateConfig.COLOR_TEXT_DIM,
+			HORIZONTAL_ALIGNMENT_CENTER)
+	_story_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_story_label.custom_minimum_size = Vector2(680.0, 0.0)
+	_story_label.visible = false
+	root_box.add_child(_story_label)
+
 	var divider := ColorRect.new()
 	divider.color = Color(FateConfig.COLOR_GOLD.r, FateConfig.COLOR_GOLD.g,
 			FateConfig.COLOR_GOLD.b, 0.38)
@@ -136,9 +150,10 @@ func _build_ui() -> void:
 	buttons.add_child(retry_btn)
 	_retry_btn = retry_btn
 	var menu_btn := UI.button("返回标题", 26, 76.0)
-	menu_btn.custom_minimum_size = Vector2(220.0, 76.0)
+	menu_btn.custom_minimum_size = Vector2(260.0, 76.0)
 	menu_btn.pressed.connect(_on_menu_pressed)
 	buttons.add_child(menu_btn)
+	_menu_btn = menu_btn
 	root_box.add_child(buttons)
 
 
@@ -158,8 +173,10 @@ func _make_stat_panel(heading: String) -> PanelContainer:
 			FateConfig.COLOR_PANEL_EDGE.b, 0.85), 16, 1))
 	var box := UI.vbox(2)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_child(UI.label(heading, 17, FateConfig.COLOR_TEXT_DIM,
-			HORIZONTAL_ALIGNMENT_CENTER))
+	var heading_label := UI.label(heading, 17, FateConfig.COLOR_TEXT_DIM,
+			HORIZONTAL_ALIGNMENT_CENTER)
+	box.add_child(heading_label)
+	_stat_headings.append(heading_label)
 	var value := UI.label("0", 42, FateConfig.COLOR_GOLD,
 			HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(value)
@@ -181,9 +198,15 @@ func show_result(victory: bool, summary: Dictionary) -> void:
 	if best <= 0 and _gs != null:
 		best = _gs.best_score
 	var level := int(summary.get("level", 1))
+	# v1.8：未拥有命源珠（隐藏关未解锁）时，不显示 /10、第10间、「十间」「命源再现」等
+	var source_unlocked := level >= FateConfig.MAX_LEVEL \
+			or (_gs != null and _gs.has_source_ball())
 
 	_panel.add_theme_stylebox_override("panel", _make_panel_style(victory))
-	_title.text = "胜 利" if victory else "失 败"
+	if victory:
+		_title.text = "命 源 再 现" if source_unlocked else "命 运 改 写"
+	else:
+		_title.text = "失 败"
 	_title.add_theme_color_override("font_color",
 			FateConfig.COLOR_GOLD if victory else FateConfig.COLOR_CRIMSON)
 	_title.add_theme_color_override("font_outline_color",
@@ -191,31 +214,93 @@ func show_result(victory: bool, summary: Dictionary) -> void:
 			else Color(1.0, 0.36, 0.42, 0.30))
 
 	if victory:
-		_subtitle.text = "命运琉璃重归完整，回廊为你敞开。"
-		_level_label.text = "三间命运房间全部通过 · 命运改写"
+		if source_unlocked:
+			_subtitle.text = "十间命运房间已贯通，命源在你掌中重燃。"
+			_level_label.text = "第 %d / %d 间 · 命源再现 · 命运改写" % [
+					FateConfig.MAX_LEVEL, FateConfig.MAX_LEVEL]
+		else:
+			_subtitle.text = "命运回廊已暂告一段落，命源的去向仍藏在雾里。"
+			_level_label.text = "%s · 命运改写" % _progress_text(level)
+		_story_label.visible = false
+		_story_label.text = ""
 	else:
 		_subtitle.text = "命运琉璃碎裂，但碎片已被你握在手中。"
-		_level_label.text = "止步于第 %d 间 · %s" % [level,
+		_level_label.text = "止步于 %s · %s" % [_progress_text(level),
 				FateConfig.LEVEL_NAMES[clampi(level, 1, FateConfig.MAX_LEVEL) - 1]]
+		var story := String(summary.get("story", ""))
+		if story == "":
+			story = FateConfig.FAILURE_STORY_LINE
+		_story_label.text = "「" + story + "」"
+		_story_label.visible = true
 
-	if _retry_btn != null:
-		_retry_btn.text = "再来一局" if victory else "重试本关"
-
-	_score_value.text = str(total_score)
-	_shards_value.text = "+%d" % shards
-	_shards_value.add_theme_color_override("font_color", FateConfig.COLOR_VIOLET)
-	_best_value.text = str(best)
-
-	_update_carried(summary)
+	_fail_level = level
+	_is_victory = victory
+	if victory:
+		if _stat_headings.size() >= 3:
+			_stat_headings[0].text = "本局总分"
+			_stat_headings[1].text = "获得命运碎片"
+			_stat_headings[2].text = "历史最高分"
+		if _retry_btn != null:
+			_retry_btn.text = "再来一局"
+		if _menu_btn != null:
+			_menu_btn.text = "返回标题"
+			_menu_btn.disabled = false
+			_menu_btn.modulate = Color(1.0, 1.0, 1.0)
+		_score_value.text = str(total_score)
+		_shards_value.text = "+%d" % shards
+		_shards_value.add_theme_color_override("font_color",
+				FateConfig.COLOR_VIOLET)
+		_best_value.text = str(best)
+		_best_value.add_theme_color_override("font_color",
+				FateConfig.COLOR_GOLD)
+		_carried_box.visible = true
+		_update_carried(summary)
+	else:
+		var level_score := int(summary.get("level_score", total_score))
+		if _stat_headings.size() >= 3:
+			_stat_headings[0].text = "关卡得分"
+			_stat_headings[1].text = "本局总分"
+			_stat_headings[2].text = "获得命运碎片"
+		if _retry_btn != null:
+			_retry_btn.text = "重试本关"
+		if _menu_btn != null:
+			_menu_btn.text = "返回上一存档点"
+			var can_return := level > 2
+			_menu_btn.disabled = not can_return
+			_menu_btn.modulate = Color(1.0, 1.0, 1.0) if can_return \
+					else Color(0.55, 0.53, 0.62, 0.75)
+		_score_value.text = str(level_score)
+		_shards_value.text = str(total_score)
+		_shards_value.add_theme_color_override("font_color",
+				FateConfig.COLOR_GOLD)
+		_best_value.text = "+%d" % shards
+		_best_value.add_theme_color_override("font_color",
+				FateConfig.COLOR_VIOLET)
+		_carried_box.visible = false
+		_clear_carried()
 
 	_badge.visible = is_new_best and victory
-	if is_new_best:
+	if is_new_best and victory:
 		_start_badge_pulse()
 	elif _badge_tween != null and _badge_tween.is_valid():
 		_badge_tween.kill()
 
 	visible = true
 	_play_open_animation()
+
+
+func _clear_carried() -> void:
+	for child in _carried_box.get_children():
+		_carried_box.remove_child(child)
+		child.queue_free()
+
+
+## 未拥有命源珠/未到第10间时只显示「第 X 间」，不泄露隐藏关总关数。
+func _progress_text(level: int) -> String:
+	if level >= FateConfig.MAX_LEVEL \
+			or (_gs != null and _gs.has_source_ball()):
+		return "第 %d / %d 间" % [level, FateConfig.MAX_LEVEL]
+	return "第 %d 间" % level
 
 
 func _update_carried(summary: Dictionary) -> void:
@@ -303,5 +388,13 @@ func _on_retry_pressed() -> void:
 
 
 func _on_menu_pressed() -> void:
+	if _menu_btn != null and _menu_btn.disabled:
+		return
 	UI.play_sfx("click")
-	menu_pressed.emit()
+	# 失败时「返回上一存档点」：优先发 checkpoint_pressed（gameplay 接线）。
+	# 若 gameplay 仍只连接旧 menu_pressed，则回退为 menu_pressed，避免按钮失效。
+	if not _is_victory and _fail_level > 0 \
+			and checkpoint_pressed.get_connections().size() > 0:
+		checkpoint_pressed.emit()
+	else:
+		menu_pressed.emit()
